@@ -1,106 +1,98 @@
-import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
-import { mockPackages } from "@/data/mock";
+import PropShortsLogo from "@/components/PropShortsLogo";
+import PropShortListItem from "@/components/lists/PropShortListItem";
+
+// ─── Tweak these to resize the screen ────────────────────────────────────────
+const LOGO_WIDTH     = 160;              // px — tm.png logo width
+const HEADING_SIZE   = "text-[44px]";    // "My Propshorts" font size
+const CONTENT_WIDTH  = "max-w-[540px]";  // max width of centered column
+// ─────────────────────────────────────────────────────────────────────────────
+
+const THUMB_COLORS = ["#cc88ff", "#c4ca7a", "#9988dd", "#c8e244", "#00c0b5", "#d566ff"];
+
+const MOCK_ITEMS = [
+  {
+    id: "vid-001",
+    pdfId: "pdf-001",
+    packageId: "pkg-001",
+    clientName: "John Smith",
+    description: "3BHK Apartment — Bandra, Mumbai",
+    refCode: "PKG-001",
+    date: "May 1",
+    thumbColor: THUMB_COLORS[0],
+  },
+  {
+    id: "vid-002",
+    pdfId: "pdf-002",
+    packageId: "pkg-002",
+    clientName: "Priya Nair",
+    description: "2BHK Apartment — Andheri, Mumbai",
+    refCode: "PKG-002",
+    date: "May 5",
+    thumbColor: THUMB_COLORS[1],
+  },
+  {
+    id: "vid-003",
+    pdfId: "pdf-003",
+    packageId: "pkg-003",
+    clientName: "Arjun Kapoor",
+    description: "Villa — Lonavala",
+    refCode: "PKG-003",
+    date: "May 12",
+    thumbColor: THUMB_COLORS[2],
+  },
+];
 
 export default function PropShortsPage() {
   return (
-    <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">My PropShorts</h1>
-            <p className="mt-1 text-sm text-gray-500">All your generated property video packages.</p>
-          </div>
-          <Link
-            href="/create/select"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-          >
-            + New PropShort
-          </Link>
+    <div className="flex min-h-screen flex-col items-center bg-white px-5 text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-4 pt-12">
+        <PropShortsLogo width={LOGO_WIDTH} />
+      </header>
+
+      {/* Main — heading + list */}
+      <main className={`flex w-full flex-1 flex-col items-center ${CONTENT_WIDTH} mx-auto`}>
+        {/* Page heading */}
+        <div className="mb-8 w-full text-center">
+          <h1 className={`${HEADING_SIZE} font-light leading-[1.1] tracking-[-0.02em] text-black`}>
+            My Propshorts
+          </h1>
+          <p className="mt-1.5 text-[14px] text-black/40">
+            {MOCK_ITEMS.length}/30 Propshorts Made This Month
+          </p>
         </div>
 
-        {mockPackages.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-gray-200 p-16 text-center">
-            <p className="text-lg font-medium text-gray-500">No PropShorts yet</p>
-            <p className="mt-1 text-sm text-gray-400">Create your first one to get started.</p>
+        {/* PropShort list */}
+        {MOCK_ITEMS.length === 0 ? (
+          <div className="w-full rounded-2xl bg-[#f3f3f3] py-16 text-center">
+            <p className="text-[17px] font-normal text-black/40">No PropShorts yet.</p>
             <Link
               href="/create/select"
-              className="mt-4 inline-flex rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+              className="mt-4 inline-block text-[15px] font-medium text-black underline underline-offset-2 hover:opacity-60 transition-opacity"
             >
-              Create PropShort
+              Create your first PropShort →
             </Link>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {["Client / Package", "Date", "Status", "Actions"].map((h) => (
-                    <th
-                      key={h}
-                      className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {mockPackages.map((pkg) => (
-                  <tr key={pkg.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-gray-900">{pkg.packageTitle}</p>
-                      <p className="text-xs text-gray-400">ID: {pkg.id}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(pkg.createdAt).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={pkg.status} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-3">
-                        <Link
-                          href={`/packages/${pkg.id}`}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          href={`/packages/${pkg.id}/brokers`}
-                          className="text-sm font-medium text-gray-500 hover:text-gray-700"
-                        >
-                          Brokers
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex w-full flex-col gap-3">
+            {MOCK_ITEMS.map((item) => (
+              <PropShortListItem key={item.id} {...item} />
+            ))}
           </div>
         )}
-      </div>
-    </AppLayout>
-  );
-}
+      </main>
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    completed: "bg-green-50 text-green-700 ring-green-600/20",
-    processing: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
-    failed: "bg-red-50 text-red-700 ring-red-600/20",
-    draft: "bg-gray-50 text-gray-700 ring-gray-600/20",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset capitalize ${styles[status] ?? styles.draft}`}
-    >
-      {status}
-    </span>
+      {/* Footer — Back + copyright */}
+      <footer className="flex w-full flex-col items-center gap-2 pb-10 pt-10">
+        <Link
+          href="/dashboard"
+          className="text-[15px] font-medium text-black underline underline-offset-2 hover:opacity-60 transition-opacity"
+        >
+          ← Back
+        </Link>
+        <p className="mt-2 text-[12px] text-black/25">© 2026 propshorts</p>
+      </footer>
+    </div>
   );
 }
