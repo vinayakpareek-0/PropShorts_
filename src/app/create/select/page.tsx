@@ -1,56 +1,74 @@
-import CreateLayout from "@/components/layout/CreateLayout";
 import Link from "next/link";
+import PropShortsLogo from "@/components/PropShortsLogo";
+import SelectOptionCard from "@/components/create/SelectOptionCard";
+
+// ─── Tweak these to resize the screen ────────────────────────────────────────
+const LOGO_WIDTH      = 180;          // px — tm.png logo width
+const HEADING_SIZE    = "text-[56px]"; // "Select." font size
+const CARD_HEIGHT     = 180;           // px — min height of each option card
+const CONTENT_WIDTH   = "max-w-[520px]"; // max width of centered column
+// ─────────────────────────────────────────────────────────────────────────────
 
 const options = [
   {
-    id: "propshort_and_pdf",
-    title: "PropShort + PDF",
-    description:
-      "Generate a short narrated video for each property recommendation plus a shareable PDF report.",
-    icon: "▶ + 📄",
-    credits: "Uses 1 PropShort credit",
+    id: "propshort_pdf",
+    title: "Propshort + PDF",
+    description: "A dynamic narrated video plus a shareable PDF.",
+    bgClass: "bg-[#c8cc7c]",
     href: "/create/talk",
   },
   {
     id: "pdf_only",
     title: "PDF Only",
-    description: "Generate a professional PDF report with property recommendations. No video.",
-    icon: "📄",
-    credits: "Uses 1 PDF credit",
+    description: "A clean professional document with all replacement options.",
+    bgClass: "bg-[#f3f3f3]",
     href: "/create/talk",
   },
 ];
 
 export default function CreateSelectPage() {
   return (
-    <CreateLayout
-      title="What would you like to create?"
-      subtitle="Choose the type of output for this client."
-      step={1}
-      totalSteps={4}
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        {options.map((option) => (
-          <Link
-            key={option.id}
-            href={option.href}
-            className="group rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 transition-all hover:shadow-md hover:ring-indigo-500"
-          >
-            <div className="mb-4 text-3xl">{option.icon}</div>
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-indigo-600">
-              {option.title}
-            </h3>
-            <p className="mt-2 text-sm text-gray-500">{option.description}</p>
-            <p className="mt-4 text-xs font-medium text-gray-400">{option.credits}</p>
-          </Link>
-        ))}
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-between bg-white px-5 text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-4 pt-12">
+        <PropShortsLogo width={LOGO_WIDTH} />
+      </header>
 
-      <div className="mt-6 flex justify-start">
-        <Link href="/dashboard" className="text-sm font-medium text-gray-500 hover:text-gray-700">
-          ← Cancel
+      {/* Main — heading + cards */}
+      <main className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto`}>
+        {/* "Select." heading */}
+        <div className="mb-10 w-full text-center">
+          <h1
+            className={`${HEADING_SIZE} font-light leading-[1.1] tracking-[-0.02em] text-black`}
+          >
+            Select.
+          </h1>
+        </div>
+
+        {/* Option cards */}
+        <div className="flex w-full flex-col gap-[22px]">
+          {options.map((opt) => (
+            <SelectOptionCard
+              key={opt.id}
+              href={opt.href}
+              title={opt.title}
+              description={opt.description}
+              bgClass={opt.bgClass}
+              cardHeight={CARD_HEIGHT}
+            />
+          ))}
+        </div>
+      </main>
+
+      {/* Footer — Cancel */}
+      <footer className="flex w-full justify-center py-10">
+        <Link
+          href="/dashboard"
+          className="text-[22px] font-normal text-black transition-opacity hover:opacity-50"
+        >
+          Cancel
         </Link>
-      </div>
-    </CreateLayout>
+      </footer>
+    </div>
   );
 }
