@@ -1,5 +1,13 @@
-import CreateLayout from "@/components/layout/CreateLayout";
 import Link from "next/link";
+import PropShortsLogo from "@/components/PropShortsLogo";
+
+// ─── Tweak these to resize the screen ────────────────────────────────────────
+const LOGO_WIDTH      = 180;             // px — tm.png logo width
+const HEADING_SIZE    = "text-[56px]";   // "Creating." font size
+const HELPER_SIZE     = "text-[18px]";   // helper text font size
+const BAR_HEIGHT      = 20;              // px — progress bar height
+const CONTENT_WIDTH   = "max-w-[520px]"; // max width of centered column
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface ProcessingPageProps {
   params: Promise<{ runId: string }>;
@@ -9,38 +17,57 @@ export default async function ProcessingPage({ params }: ProcessingPageProps) {
   const { runId } = await params;
 
   return (
-    <CreateLayout title="Creating your PropShort" subtitle="This usually takes 1–2 minutes.">
-      <div className="space-y-8">
-        {/* Animated progress */}
-        <div className="rounded-2xl bg-white px-8 py-12 text-center shadow-sm ring-1 ring-gray-200">
-          <div className="relative mx-auto mb-6 h-16 w-16">
-            <div className="absolute inset-0 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" />
-            <div className="absolute inset-3 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xl">
-              ✨
-            </div>
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900">Finding matches & building your package</h2>
-          <p className="mt-2 text-sm text-gray-500">
-            Our AI is searching for the best properties and preparing your video and PDF report.
+    <div className="flex min-h-screen flex-col items-center justify-between bg-white px-5 text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-4 pt-12">
+        <PropShortsLogo width={LOGO_WIDTH} />
+      </header>
+
+      {/* Main — heading + helper + progress bar */}
+      <main
+        className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto gap-12`}
+      >
+        <div className="mt-[-80px] flex flex-col items-center gap-4 text-center">
+          <h1
+            className={`${HEADING_SIZE} font-normal leading-[1.1] tracking-[-0.02em] text-black`}
+          >
+            Creating.
+          </h1>
+          <p className={`${HELPER_SIZE} font-normal leading-relaxed text-black max-w-[280px]`}>
+            Finding matches and building your video and PDF.
           </p>
-
-          {/* Progress bar */}
-          <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-            <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-indigo-500 to-purple-500" />
-          </div>
         </div>
 
-        {/* Run ID reference */}
-        <p className="text-center text-xs text-gray-400">Reference: {runId}</p>
-
-        {/* Mock: link to result */}
-        <div className="rounded-xl bg-green-50 p-4 text-center text-sm text-green-700">
-          <p className="font-medium">Mock: Package ready</p>
-          <Link href="/packages/pkg-001" className="mt-2 inline-block font-semibold underline">
-            View package →
-          </Link>
+        {/* Animated gradient progress bar */}
+        <div
+          className="w-full max-w-xs overflow-hidden rounded-full bg-[#e8e8e8]"
+          style={{ height: BAR_HEIGHT }}
+          role="progressbar"
+          aria-label="Processing"
+          aria-valuetext="Loading"
+        >
+          <div
+            className="animate-ticker h-full w-full rounded-full"
+            style={{
+              background:
+                "linear-gradient(90deg, #9b51e0 0%, #2d9cdb 33%, #56ccf2 66%, #a1c866 100%)",
+            }}
+          />
         </div>
-      </div>
-    </CreateLayout>
+
+        {/* Hidden run ID for reference */}
+        <span className="sr-only">Run ID: {runId}</span>
+      </main>
+
+      {/* Footer — Cancel */}
+      <footer className="flex w-full justify-center py-10">
+        <Link
+          href="/dashboard"
+          className="text-[22px] font-normal text-black transition-opacity hover:opacity-50"
+        >
+          Cancel
+        </Link>
+      </footer>
+    </div>
   );
 }

@@ -11,7 +11,6 @@ const CONTENT_WIDTH   = "max-w-[520px]"; // max width of centered column
 
 const MOCK_RUN_ID = "run-001";
 
-// Build natural-prose summary from mock requirement (req may be undefined)
 const req = mockRequirement.refinedRequirementsJson;
 const budgetLabel = req
   ? req.currency === "INR"
@@ -39,7 +38,7 @@ export default function CreateConfirmPage() {
         className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto`}
       >
         {/* "Confirm." heading */}
-        <div className="mb-10 mt-10 w-full text-center">
+        <div className="mb-15 mt-30 w-full text-center">
           <h1
             className={`${HEADING_SIZE} font-normal leading-[1.1] tracking-[-0.02em] text-black`}
           >
