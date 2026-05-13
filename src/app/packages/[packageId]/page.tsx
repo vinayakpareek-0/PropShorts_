@@ -8,11 +8,11 @@ import { mockPackageDetail } from "@/data/mock";
 
 // ─── Tweak these to resize the screen ────────────────────────────────────────
 const LOGO_WIDTH       = 160;             // px — tm.png logo width
-const HEADING_SIZE     = "text-[64px]";   // "Ready." font size
-const HELPER_SIZE      = "text-[17px]";   // helper text font size
-const THUMB_W          = 136;             // px — card thumbnail width
+const HEADING_SIZE     = "text-[74px]";   // "Ready." font size
+const HELPER_SIZE      = "text-[18px]";  // helper text font size
+const THUMB_W          = 132;             // px — card thumbnail width
 const THUMB_H          = 80;              // px — card thumbnail height
-const CONTENT_WIDTH    = "max-w-[480px]"; // max width of centered column
+const CONTENT_WIDTH    = "max-w-[500px]"; // max width of centered column
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PackagePage() {
@@ -49,11 +49,11 @@ export default function PackagePage() {
       {/* Main — heading + helper + cards */}
       <main className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto`}>
         {/* Heading */}
-        <div className="mb-8 mt-[-20px] w-full text-center">
+        <div className="mb-8 mt-[-60px] w-full text-center">
           <h1 className={`${HEADING_SIZE} font-normal leading-[1.05] tracking-[-0.02em] text-black`}>
             Ready.
           </h1>
-          <p className={`mt-3 ${HELPER_SIZE} font-normal leading-relaxed text-black/50 max-w-xs mx-auto`}>
+          <p className={`mt-3 ${HELPER_SIZE} font-normal leading-relaxed text-black/50 max-w-[200px] mx-auto`}>
             Your PropShort &amp; PDF are ready to share with your client.
           </p>
         </div>
@@ -122,22 +122,26 @@ export default function PackagePage() {
             </div>
           </Link>
         </div>
+
+        {/* Share actions — close to cards */}
+        <div className="mt-8 flex w-full flex-col items-center gap-5">
+          <button
+            onClick={handleShare}
+            className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
+          >
+            {shared ? "Link Copied!" : "Share"}
+          </button>
+          <Link
+            href="/dashboard"
+            className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"
+          >
+            Share Later
+          </Link>
+        </div>
       </main>
 
-      {/* Footer — Share + Share Later + Cancel */}
-      <footer className={`flex w-full flex-col items-center gap-5 pb-14 pt-8 ${CONTENT_WIDTH} mx-auto`}>
-        <button
-          onClick={handleShare}
-          className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
-        >
-          {shared ? "Link Copied!" : "Share"}
-        </button>
-        <Link
-          href="/dashboard"
-          className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"
-        >
-          Share Later
-        </Link>
+      {/* Footer — Cancel only */}
+      <footer className="flex w-full justify-center pb-12 pt-4">
         <Link
           href="/dashboard"
           className="text-[14px] font-normal text-black/40 transition-opacity hover:opacity-70"
