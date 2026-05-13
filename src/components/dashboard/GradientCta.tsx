@@ -1,8 +1,17 @@
-export default function GradientCta() {
+interface GradientCtaProps {
+  /** Outer circle diameter in px. Inner circle is ~40% of this. */
+  size?: number;
+}
+
+export default function GradientCta({ size = 300 }: GradientCtaProps) {
+  const innerSize = Math.round(size * 0.4);
+
   return (
     <div
-      className="relative flex h-[220px] w-[220px] items-center justify-center rounded-full transition-transform duration-300 hover:scale-105"
+      className="relative flex items-center justify-center rounded-full transition-transform duration-300 hover:scale-105"
       style={{
+        width: size,
+        height: size,
         background:
           "conic-gradient(from 180deg at 50% 50%, #d387f5 0deg, #e6d85c 90deg, #43e97b 180deg, #4facfe 270deg, #d387f5 360deg)",
       }}
@@ -16,9 +25,13 @@ export default function GradientCta() {
         }}
       />
       {/* Black inner circle with plus icon */}
-      <div className="relative z-10 flex h-[90px] w-[90px] items-center justify-center rounded-full bg-black">
+      <div
+        className="relative z-10 flex items-center justify-center rounded-full bg-black"
+        style={{ width: innerSize, height: innerSize }}
+      >
         <svg
-          className="h-10 w-10 text-white"
+          className="text-white"
+          style={{ width: innerSize * 0.44, height: innerSize * 0.44 }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
