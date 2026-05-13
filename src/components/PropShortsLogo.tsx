@@ -10,12 +10,15 @@ export default function PropShortsLogo({ className = "" }: PropShortsLogoProps) 
       <Image
         src="/icon.png"
         alt="PropShorts icon"
-        width={50}
-        height={50}
-        className="h-[50px] w-[50px] object-contain"
+        width={80}
+        height={80}
+        className="h-20 w-20 object-contain"
         priority
       />
-      <span className="text-2xl font-semibold tracking-tight text-black lowercase">
+      <span
+        className="text-6xl font-bold tracking-tight text-black lowercase"
+        style={{ fontFamily: "var(--font-inter)" }}
+      >
         propshorts
       </span>
     </div>
