@@ -29,13 +29,14 @@ export default function DashboardPage() {
           </CircularNavButton>
 
           <CircularNavButton href="/tips" label="Tips">
+            {/* contrast(1000%) forces grey bg → white, black icon → black; invert flips to white icon on black */}
             <Image
               src="/icon.png"
               alt=""
               width={28}
               height={28}
               className="h-7 w-7 object-contain"
-              style={{ filter: "brightness(0) invert(1)" }}
+              style={{ filter: "contrast(1000%) invert(1)" }}
               aria-hidden
             />
           </CircularNavButton>
