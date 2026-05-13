@@ -30,11 +30,12 @@ export default function DashboardPage() {
 
           <CircularNavButton href="/tips" label="Tips">
             <Image
-              src="/logo.png"
+              src="/icon.png"
               alt=""
               width={28}
               height={28}
-              className="h-7 w-7 object-contain invert"
+              className="h-7 w-7 object-contain"
+              style={{ filter: "brightness(0) invert(1)" }}
               aria-hidden
             />
           </CircularNavButton>
