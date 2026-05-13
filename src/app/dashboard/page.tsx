@@ -22,21 +22,19 @@ export default function DashboardPage() {
 
       {/* Footer — nav buttons */}
       <footer className="flex w-full flex-col items-center gap-6 pb-14 pt-8">
-        <p className="text-sm font-medium tracking-wide">Tips</p>
+        <p className="text-xl font-medium tracking-wide">Tips</p>
         <nav className="flex items-center justify-center gap-6" aria-label="Quick navigation">
           <CircularNavButton href="/pdfs" label="My PDFs">
             <span className="text-sm font-bold tracking-wider">PDF</span>
           </CircularNavButton>
 
           <CircularNavButton href="/tips" label="Tips">
-            {/* contrast(1000%) forces grey bg → white, black icon → black; invert flips to white icon on black */}
             <Image
               src="/icon.png"
               alt=""
               width={28}
               height={28}
-              className="h-7 w-7 object-contain"
-              style={{ filter: "contrast(1000%) invert(1)" }}
+              className="h-7 w-7 object-contain invert"
               aria-hidden
             />
           </CircularNavButton>

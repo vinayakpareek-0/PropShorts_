@@ -6,16 +6,16 @@ interface PropShortsLogoProps {
 
 export default function PropShortsLogo({ className = "" }: PropShortsLogoProps) {
   return (
-    <div className={`flex flex-col items-center gap-2 ${className}`}>
+    <div className={`flex flex-col items-center gap-3 ${className}`}>
       <Image
         src="/icon.png"
         alt="PropShorts icon"
-        width={96}
-        height={96}
-        className="h-24 w-24 object-contain"
+        width={120}
+        height={120}
+        className="h-[120px] w-[120px] object-contain"
         priority
       />
-      <span className="text-4xl font-semibold tracking-tight text-black lowercase">
+      <span className="text-5xl font-semibold tracking-tight text-black lowercase">
         propshorts
       </span>
     </div>
