@@ -1,61 +1,68 @@
-import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
-import { mockBroker } from "@/data/mock";
+import PropShortsLogo from "@/components/PropShortsLogo";
 
-const sections = [
-  { href: "/account/profile", label: "Profile", desc: "Name, company, contact details", icon: "👤" },
-  { href: "/account/subscription", label: "Subscription", desc: "Plan and usage", icon: "📋" },
-  { href: "/account/payment", label: "Payment Info", desc: "Billing and payment method", icon: "💳" },
-  { href: "/account/security", label: "Security", desc: "Password and account security", icon: "🔒" },
+// ─── Tweak these to resize the screen ────────────────────────────────────────
+const LOGO_WIDTH    = 160;              // px — tm.png logo width
+const CONTENT_WIDTH = "max-w-[520px]";  // max width of centered column
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SETTINGS = [
+  {
+    href: "/account/profile",
+    title: "Profile",
+    desc: "Name, company, and contact details.",
+  },
+  {
+    href: "/account/subscription",
+    title: "Subscription",
+    desc: "Current plan and monthly usage.",
+  },
+  {
+    href: "/account/payment",
+    title: "Payment Info",
+    desc: "Billing details and payment method.",
+  },
+  {
+    href: "/account/security",
+    title: "Security",
+    desc: "Password and account security.",
+  },
 ];
 
 export default function AccountPage() {
   return (
-    <AppLayout>
-      <div className="space-y-8">
-        {/* Profile summary */}
-        <div className="flex items-center gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600 text-xl font-bold text-white">
-            {mockBroker.fullName
-              .split(" ")
-              .map((n) => n[0])
-              .join("")}
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{mockBroker.fullName}</h1>
-            <p className="text-sm text-gray-500">{mockBroker.companyName}</p>
-            <p className="text-sm text-gray-500">{mockBroker.email}</p>
-          </div>
-        </div>
+    <div className="flex min-h-screen flex-col items-center bg-white px-5 text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-4 pt-12">
+        <PropShortsLogo width={LOGO_WIDTH} />
+      </header>
 
-        {/* Account sections */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {sections.map((section) => (
+      {/* Main — settings cards */}
+      <main className={`flex w-full flex-1 flex-col items-center ${CONTENT_WIDTH} mx-auto`}>
+        <div className="mt-10 flex w-full flex-col gap-4">
+          {SETTINGS.map((s) => (
             <Link
-              key={section.href}
-              href={section.href}
-              className="group flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-shadow hover:shadow-md"
+              key={s.href}
+              href={s.href}
+              className="w-full rounded-2xl border border-[#e2e2e2] bg-[#f3f3f3] px-6 py-5 text-left transition-colors hover:bg-[#eeeeee] focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
             >
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-2xl group-hover:bg-indigo-50">
-                {section.icon}
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-900 group-hover:text-indigo-600">
-                  {section.label}
-                </p>
-                <p className="mt-0.5 text-sm text-gray-500">{section.desc}</p>
-              </div>
-              <span className="text-gray-400 group-hover:text-indigo-500">→</span>
+              <h2 className="text-[20px] font-semibold leading-tight text-black">{s.title}</h2>
+              <p className="mt-1 text-[15px] font-normal leading-relaxed text-black/50">{s.desc}</p>
             </Link>
           ))}
         </div>
+      </main>
 
-        <div className="pt-4">
-          <button className="text-sm font-medium text-red-600 hover:text-red-500">
-            Sign out
-          </button>
-        </div>
-      </div>
-    </AppLayout>
+      {/* Footer — Cancel + copyright */}
+      <footer className="flex w-full flex-col items-center gap-2 pb-10 pt-10">
+        <Link
+          href="/dashboard"
+          className="text-[15px] font-medium text-black underline underline-offset-2 hover:opacity-60 transition-opacity"
+        >
+          ← Cancel
+        </Link>
+        <p className="mt-2 text-[12px] text-black/25">© 2026 propshorts</p>
+      </footer>
+    </div>
   );
 }
