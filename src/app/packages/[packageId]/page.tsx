@@ -1,94 +1,150 @@
-import AppLayout from "@/components/layout/AppLayout";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
+import PropShortsLogo from "@/components/PropShortsLogo";
 import { mockPackageDetail } from "@/data/mock";
 
-interface PackagePageProps {
-  params: Promise<{ packageId: string }>;
-}
+// ─── Tweak these to resize the screen ────────────────────────────────────────
+const LOGO_WIDTH       = 160;             // px — tm.png logo width
+const HEADING_SIZE     = "text-[64px]";   // "Ready." font size
+const HELPER_SIZE      = "text-[17px]";   // helper text font size
+const THUMB_W          = 136;             // px — card thumbnail width
+const THUMB_H          = 80;              // px — card thumbnail height
+const CONTENT_WIDTH    = "max-w-[480px]"; // max width of centered column
+// ─────────────────────────────────────────────────────────────────────────────
 
-export default async function PackagePage({ params }: PackagePageProps) {
-  const { packageId } = await params;
+export default function PackagePage() {
+  const { packageId } = useParams<{ packageId: string }>();
   const pkg = mockPackageDetail;
 
+  const [shared, setShared] = useState(false);
+
+  const refCode = pkg.id.replace("pkg-", "PKG-").toUpperCase();
+  const dateLabel = new Date(pkg.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  const clientName = pkg.requirement?.clientName ?? "Client";
+  const brief = pkg.requirement?.refinedRequirementsJson
+    ? `${pkg.requirement.refinedRequirementsJson.bedrooms}BHK ${pkg.requirement.refinedRequirementsJson.propertyType} — ${pkg.requirement.refinedRequirementsJson.location}`
+    : pkg.packageTitle;
+
+  const propshortId = pkg.videos?.[0]?.id ?? `${packageId}-video`;
+  const pdfId = pkg.pdfId ?? `${packageId}-pdf`;
+
+  function handleShare() {
+    setShared(true);
+    setTimeout(() => setShared(false), 2000);
+  }
+
   return (
-    <AppLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <Link href="/propshorts" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-              ← My PropShorts
-            </Link>
-            <h1 className="mt-2 text-2xl font-bold text-gray-900">{pkg.packageTitle}</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Created {new Date(pkg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href={`/packages/${packageId}/brokers`}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+    <div className="flex min-h-screen flex-col items-center justify-between bg-white px-5 text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-4 pt-12">
+        <PropShortsLogo width={LOGO_WIDTH} />
+      </header>
+
+      {/* Main — heading + helper + cards */}
+      <main className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto`}>
+        {/* Heading */}
+        <div className="mb-8 mt-[-20px] w-full text-center">
+          <h1 className={`${HEADING_SIZE} font-normal leading-[1.05] tracking-[-0.02em] text-black`}>
+            Ready.
+          </h1>
+          <p className={`mt-3 ${HELPER_SIZE} font-normal leading-relaxed text-black/50 max-w-xs mx-auto`}>
+            Your PropShort &amp; PDF are ready to share with your client.
+          </p>
+        </div>
+
+        {/* Output cards */}
+        <div className="flex w-full flex-col gap-4">
+          {/* Video card */}
+          <Link
+            href={`/propshorts/${propshortId}`}
+            className="flex w-full items-center gap-5 rounded-2xl bg-[#f2f2f2] p-4 transition-opacity hover:opacity-80"
+          >
+            {/* Thumbnail */}
+            <div
+              className="flex flex-shrink-0 items-center justify-center rounded-xl"
+              style={{
+                width: THUMB_W,
+                height: THUMB_H,
+                background: "linear-gradient(135deg, #d378ff 0%, #c05df1 100%)",
+              }}
             >
-              Listing Brokers
-            </Link>
-            <button className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-              Share Package
-            </button>
-          </div>
-        </div>
-
-        {/* Videos */}
-        <div>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">PropShort Videos</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {pkg.properties.map((property, i) => (
-              <div key={property.id} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-                <div className="flex h-40 items-center justify-center bg-gray-100 text-4xl text-gray-400">
-                  ▶
-                </div>
-                <div className="p-4">
-                  <p className="font-semibold text-gray-900 line-clamp-1">{property.title}</p>
-                  <p className="mt-0.5 text-sm text-gray-500">{property.area}, {property.city}</p>
-                  <p className="mt-1 text-sm font-medium text-indigo-600">
-                    ₹{(property.price / 1000000).toFixed(1)}Cr
-                  </p>
-                  <Link
-                    href={`/propshorts/${pkg.id}-prop-${i + 1}`}
-                    className="mt-3 block text-center rounded-lg bg-gray-100 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                  >
-                    Watch Video
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* PDF */}
-        <div>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">PDF Report</h2>
-          <div className="flex items-center justify-between rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50 text-2xl">
-                📄
-              </div>
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="text-black"
+                style={{ width: 36, height: 36 }}
+                aria-hidden="true"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+            {/* Info */}
+            <div className="flex min-w-0 flex-col justify-between py-1">
               <div>
-                <p className="font-semibold text-gray-900">{pkg.packageTitle}</p>
-                <p className="text-sm text-gray-500">PDF Report · 3 properties</p>
+                <h3 className="text-[17px] font-semibold leading-tight text-black">{clientName}</h3>
+                <p className="mt-0.5 line-clamp-1 text-[13px] text-black/50">{brief}</p>
+              </div>
+              <div className="mt-2 flex items-center gap-5 text-[11px] font-medium uppercase tracking-wide text-black/40">
+                <span>{refCode}</span>
+                <span>{dateLabel}</span>
               </div>
             </div>
-            <Link
-              href={`/pdfs/${pkg.pdfId}`}
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-            >
-              Open PDF
-            </Link>
-          </div>
-        </div>
+          </Link>
 
-        {/* Reference */}
-        <p className="text-xs text-gray-400">Package ID: {packageId}</p>
-      </div>
-    </AppLayout>
+          {/* PDF card */}
+          <Link
+            href={`/pdfs/${pdfId}`}
+            className="flex w-full items-center gap-5 rounded-2xl bg-[#f2f2f2] p-4 transition-opacity hover:opacity-80"
+          >
+            {/* Thumbnail */}
+            <div
+              className="flex flex-shrink-0 items-center justify-center rounded-xl bg-black"
+              style={{ width: THUMB_W, height: THUMB_H }}
+            >
+              <span className="text-[20px] font-bold tracking-tighter text-white">PDF</span>
+            </div>
+            {/* Info */}
+            <div className="flex min-w-0 flex-col justify-between py-1">
+              <div>
+                <h3 className="text-[17px] font-semibold leading-tight text-black">{clientName}</h3>
+                <p className="mt-0.5 line-clamp-1 text-[13px] text-black/50">{brief}</p>
+              </div>
+              <div className="mt-2 flex items-center gap-5 text-[11px] font-medium uppercase tracking-wide text-black/40">
+                <span>{refCode}</span>
+                <span>{dateLabel}</span>
+              </div>
+            </div>
+          </Link>
+        </div>
+      </main>
+
+      {/* Footer — Share + Share Later + Cancel */}
+      <footer className={`flex w-full flex-col items-center gap-5 pb-14 pt-8 ${CONTENT_WIDTH} mx-auto`}>
+        <button
+          onClick={handleShare}
+          className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
+        >
+          {shared ? "Link Copied!" : "Share"}
+        </button>
+        <Link
+          href="/dashboard"
+          className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"
+        >
+          Share Later
+        </Link>
+        <Link
+          href="/dashboard"
+          className="text-[14px] font-normal text-black/40 transition-opacity hover:opacity-70"
+        >
+          Cancel
+        </Link>
+      </footer>
+    </div>
   );
 }
