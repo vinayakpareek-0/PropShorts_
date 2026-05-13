@@ -2,11 +2,11 @@ import Link from "next/link";
 import PropShortsLogo from "@/components/PropShortsLogo";
 
 // ─── Tweak these to resize the screen ────────────────────────────────────────
-const LOGO_WIDTH      = 180;             // px — tm.png logo width
-const HEADING_SIZE    = "text-[56px]";   // "Creating." font size
+const LOGO_WIDTH      = 150;             // px — tm.png logo width
+const HEADING_SIZE    = "text-[68px]";   // "Creating." font size
 const HELPER_SIZE     = "text-[18px]";   // helper text font size
-const BAR_HEIGHT      = 20;              // px — progress bar height
-const CONTENT_WIDTH   = "max-w-[520px]"; // max width of centered column
+const BAR_HEIGHT      = 32;              // px — progress bar height
+const CONTENT_WIDTH   = "max-w-[480px]"; // max width of centered column
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ProcessingPageProps {
@@ -27,20 +27,20 @@ export default async function ProcessingPage({ params }: ProcessingPageProps) {
       <main
         className={`flex w-full flex-1 flex-col items-center justify-center ${CONTENT_WIDTH} mx-auto gap-12`}
       >
-        <div className="mt-[-80px] flex flex-col items-center gap-4 text-center">
+        <div className="mt-[-60px] flex flex-col items-center gap-5 text-center">
           <h1
-            className={`${HEADING_SIZE} font-normal leading-[1.1] tracking-[-0.02em] text-black`}
+            className={`${HEADING_SIZE} font-bold leading-[1.05] tracking-[-0.02em] text-black`}
           >
             Creating.
           </h1>
-          <p className={`${HELPER_SIZE} font-normal leading-relaxed text-black max-w-[280px]`}>
+          <p className={`${HELPER_SIZE} font-normal leading-relaxed text-black/50 max-w-[260px]`}>
             Finding matches and building your video and PDF.
           </p>
         </div>
 
         {/* Animated gradient progress bar */}
         <div
-          className="w-full max-w-xs overflow-hidden rounded-full bg-[#e8e8e8]"
+          className="w-full overflow-hidden rounded-full bg-[#e8e8e8]"
           style={{ height: BAR_HEIGHT }}
           role="progressbar"
           aria-label="Processing"
