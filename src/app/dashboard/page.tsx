@@ -1,112 +1,73 @@
-import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
-import { mockPackages, mockBroker } from "@/data/mock";
+import PropShortsLogo from "@/components/PropShortsLogo";
+import GradientCta from "@/components/dashboard/GradientCta";
+import CircularNavButton from "@/components/dashboard/CircularNavButton";
 
 export default function DashboardPage() {
   return (
-    <AppLayout>
-      <div className="space-y-8">
-        {/* Welcome */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Welcome back, {mockBroker.fullName.split(" ")[0]}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Create a new PropShort or check your recent activity.
-          </p>
-        </div>
+    <div className="flex min-h-screen select-none flex-col items-center justify-between overflow-hidden bg-white text-black">
+      {/* Header — logo */}
+      <header className="flex w-full justify-center pb-8 pt-14">
+        <PropShortsLogo />
+      </header>
 
-        {/* Primary CTA */}
-        <div className="rounded-2xl bg-indigo-600 p-8 text-white">
-          <h2 className="text-xl font-semibold">Ready to impress a client?</h2>
-          <p className="mt-2 text-indigo-100">
-            Turn their requirements into polished property recommendations in minutes.
-          </p>
-          <Link
-            href="/create/select"
-            className="mt-6 inline-flex items-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50"
-          >
-            + Create New PropShort
-          </Link>
-        </div>
+      {/* Main — gradient CTA */}
+      <main className="flex w-full flex-1 flex-col items-center justify-center px-4">
+        <Link href="/create/select" aria-label="Send Propshort">
+          <GradientCta />
+        </Link>
+        <h2 className="mt-8 text-[32px] font-semibold tracking-tight">Send Propshort</h2>
+      </main>
 
-        {/* Quick links */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { href: "/propshorts", label: "My PropShorts", icon: "▶", desc: "Videos & packages" },
-            { href: "/pdfs", label: "My PDFs", icon: "📄", desc: "Generated reports" },
-            { href: "/tips", label: "Tips", icon: "💡", desc: "How to get best results" },
-            { href: "/account", label: "Account", icon: "👤", desc: "Profile & settings" },
-          ].map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-shadow hover:shadow-md"
+      {/* Footer — nav buttons */}
+      <footer className="flex w-full flex-col items-center gap-6 pb-14 pt-8">
+        <p className="text-sm font-medium tracking-wide">Tips</p>
+        <nav className="flex items-center justify-center gap-6" aria-label="Quick navigation">
+          <CircularNavButton href="/pdfs" label="My PDFs">
+            <span className="text-sm font-bold tracking-wider">PDF</span>
+          </CircularNavButton>
+
+          <CircularNavButton href="/tips" label="Tips">
+            {/* Mini film reel icon */}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 56 56"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
-              <div className="text-2xl">{item.icon}</div>
-              <p className="mt-2 font-semibold text-gray-900">{item.label}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{item.desc}</p>
-            </Link>
-          ))}
-        </div>
+              <circle cx="28" cy="28" r="28" fill="white" />
+              <line x1="28" y1="4" x2="28" y2="52" stroke="black" strokeWidth="1.5" />
+              <line x1="4" y1="28" x2="52" y2="28" stroke="black" strokeWidth="1.5" />
+              <line x1="10.1" y1="10.1" x2="45.9" y2="45.9" stroke="black" strokeWidth="1.5" />
+              <line x1="45.9" y1="10.1" x2="10.1" y2="45.9" stroke="black" strokeWidth="1.5" />
+              <circle cx="28" cy="28" r="9" fill="white" stroke="black" strokeWidth="1.5" />
+              <circle cx="28" cy="12" r="4" fill="black" />
+              <circle cx="44" cy="28" r="4" fill="black" />
+              <circle cx="28" cy="44" r="4" fill="black" />
+              <circle cx="12" cy="28" r="4" fill="black" />
+            </svg>
+          </CircularNavButton>
 
-        {/* Recent packages */}
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Packages</h2>
-            <Link href="/propshorts" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-              View all
-            </Link>
-          </div>
-
-          {mockPackages.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed border-gray-200 p-12 text-center">
-              <p className="text-gray-500">No packages yet. Create your first PropShort above.</p>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-              <ul className="divide-y divide-gray-100">
-                {mockPackages.map((pkg) => (
-                  <li key={pkg.id}>
-                    <Link
-                      href={`/packages/${pkg.id}`}
-                      className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">{pkg.packageTitle}</p>
-                        <p className="mt-0.5 text-sm text-gray-500">
-                          {new Date(pkg.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </p>
-                      </div>
-                      <StatusBadge status={pkg.status} />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-    </AppLayout>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    completed: "bg-green-50 text-green-700 ring-green-600/20",
-    processing: "bg-yellow-50 text-yellow-700 ring-yellow-600/20",
-    failed: "bg-red-50 text-red-700 ring-red-600/20",
-    draft: "bg-gray-50 text-gray-700 ring-gray-600/20",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset capitalize ${styles[status] ?? styles.draft}`}
-    >
-      {status}
-    </span>
+          <CircularNavButton href="/account" label="Account">
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
+            </svg>
+          </CircularNavButton>
+        </nav>
+      </footer>
+    </div>
   );
 }
