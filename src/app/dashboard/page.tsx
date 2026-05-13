@@ -7,9 +7,9 @@ import CircularNavButton from "@/components/dashboard/CircularNavButton";
 export default function DashboardPage() {
   return (
     <div className="flex min-h-screen select-none flex-col items-center justify-between overflow-hidden bg-white text-black">
-      {/* Header — logo */}
+      {/* Header — logo: adjust width prop to resize */}
       <header className="flex w-full justify-center pb-8 pt-14">
-        <PropShortsLogo />
+        <PropShortsLogo width={220} />
       </header>
 
       {/* Main — gradient CTA */}
