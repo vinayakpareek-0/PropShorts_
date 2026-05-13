@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import PropShortsLogo from "@/components/PropShortsLogo";
 import GradientCta from "@/components/dashboard/GradientCta";
@@ -28,26 +29,14 @@ export default function DashboardPage() {
           </CircularNavButton>
 
           <CircularNavButton href="/tips" label="Tips">
-            {/* Mini film reel icon */}
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 56 56"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <circle cx="28" cy="28" r="28" fill="white" />
-              <line x1="28" y1="4" x2="28" y2="52" stroke="black" strokeWidth="1.5" />
-              <line x1="4" y1="28" x2="52" y2="28" stroke="black" strokeWidth="1.5" />
-              <line x1="10.1" y1="10.1" x2="45.9" y2="45.9" stroke="black" strokeWidth="1.5" />
-              <line x1="45.9" y1="10.1" x2="10.1" y2="45.9" stroke="black" strokeWidth="1.5" />
-              <circle cx="28" cy="28" r="9" fill="white" stroke="black" strokeWidth="1.5" />
-              <circle cx="28" cy="12" r="4" fill="black" />
-              <circle cx="44" cy="28" r="4" fill="black" />
-              <circle cx="28" cy="44" r="4" fill="black" />
-              <circle cx="12" cy="28" r="4" fill="black" />
-            </svg>
+            <Image
+              src="/logo.png"
+              alt=""
+              width={28}
+              height={28}
+              className="h-7 w-7 object-contain invert"
+              aria-hidden
+            />
           </CircularNavButton>
 
           <CircularNavButton href="/account" label="Account">
