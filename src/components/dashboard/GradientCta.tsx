@@ -5,16 +5,18 @@ export default function GradientCta() {
       style={{
         background:
           "conic-gradient(from 180deg at 50% 50%, #d387f5 0deg, #e6d85c 90deg, #43e97b 180deg, #4facfe 270deg, #d387f5 360deg)",
-        filter: "blur(0.5px)",
       }}
     >
-      {/* Inner depth shadow overlay */}
+      {/* Radial vignette — black outer edge fading inward */}
       <div
         className="absolute inset-0 rounded-full"
-        style={{ boxShadow: "inset 0 0 40px rgba(0,0,0,0.35)" }}
+        style={{
+          background:
+            "radial-gradient(circle at center, transparent 28%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.85) 75%, black 92%)",
+        }}
       />
       {/* Black inner circle with plus icon */}
-      <div className="relative z-10 flex h-[84px] w-[84px] items-center justify-center rounded-full bg-black">
+      <div className="relative z-10 flex h-[90px] w-[90px] items-center justify-center rounded-full bg-black">
         <svg
           className="h-10 w-10 text-white"
           fill="none"
