@@ -6,10 +6,6 @@ interface PropshortViewerPageProps {
   params: Promise<{ propshortId: string }>;
 }
 
-export function generateStaticParams() {
-  return [{ propshortId: "vid-001" }, { propshortId: "vid-002" }, { propshortId: "vid-003" }];
-}
-
 export default async function PropshortViewerPage({ params }: PropshortViewerPageProps) {
   const { propshortId } = await params;
   const pkg = mockPackageDetail;

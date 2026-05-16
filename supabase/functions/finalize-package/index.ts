@@ -1,0 +1,39 @@
+import {
+  corsHeaders,
+  finalizePackageRecord,
+  getErrorMessage,
+  getSupabaseForRequest,
+  jsonResponse,
+  loadRequirement,
+  loadRun,
+  requireUser,
+} from "../_shared/propshorts-pipeline.ts";
+
+interface Body {
+  run_id?: string;
+  pdf_id?: string | null;
+  video_id?: string | null;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return jsonResponse({ success: false, error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405);
+  }
+
+  try {
+    const supabase = getSupabaseForRequest(req);
+    await requireUser(supabase);
+    const body = await req.json() as Body;
+    const runId = body.run_id?.trim();
+    if (!runId) return jsonResponse({ success: false, error: { code: "RUN_ID_REQUIRED", message: "Run ID is required." } }, 400);
+
+    const run = await loadRun(supabase, runId);
+    const requirement = await loadRequirement(supabase, run.requirement_id);
+    const pkg = await finalizePackageRecord(supabase, run, requirement, body.pdf_id ?? null, body.video_id ?? null);
+    return jsonResponse({ success: true, run_id: run.id, package_id: pkg.id, share_slug: pkg.share_slug, status: "completed" });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return jsonResponse({ success: false, error: { code: message, message } }, message === "UNAUTHORIZED" ? 401 : 500);
+  }
+});

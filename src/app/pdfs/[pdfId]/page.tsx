@@ -6,10 +6,6 @@ interface PdfViewerPageProps {
   params: Promise<{ pdfId: string }>;
 }
 
-export function generateStaticParams() {
-  return [{ pdfId: "pdf-001" }, { pdfId: "pdf-002" }, { pdfId: "pdf-003" }];
-}
-
 export default async function PdfViewerPage({ params }: PdfViewerPageProps) {
   const { pdfId } = await params;
   const pkg = mockPackageDetail;

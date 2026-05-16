@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
-import { mockPackageDetail } from "@/data/mock";
+import { supabase } from "@/lib/supabase/client";
+import type { Database, Json } from "@/lib/supabase/database.types";
 
 const THUMB_W = 132;
 const THUMB_H = 80;
@@ -12,22 +13,79 @@ interface PackagePageClientProps {
   packageId: string;
 }
 
+type PackageRow = Database["public"]["Tables"]["recommendation_packages"]["Row"];
+type RequirementRow = Database["public"]["Tables"]["client_requirements"]["Row"];
+type PdfRow = Database["public"]["Tables"]["generated_pdfs"]["Row"];
+type VideoRow = Database["public"]["Tables"]["generated_videos"]["Row"];
+
+interface PackageDetailRow extends PackageRow {
+  client_requirements: RequirementRow | null;
+  generated_pdfs: PdfRow | null;
+  generated_videos: VideoRow | null;
+}
+
+function refinedBrief(value: Json | null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, Json | undefined>;
+  const location = typeof data.location === "string" ? data.location : null;
+  const propertyType = typeof data.property_type === "string" ? data.property_type : null;
+  const bedrooms = typeof data.bedrooms === "number" ? `${data.bedrooms}BHK` : null;
+  return [bedrooms, propertyType, location].filter(Boolean).join(" - ") || null;
+}
+
 export default function PackagePageClient({ packageId }: PackagePageClientProps) {
-  const pkg = mockPackageDetail;
+  const [pkg, setPkg] = useState<PackageDetailRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
 
-  const refCode = pkg.id.replace("pkg-", "PKG-").toUpperCase();
-  const dateLabel = new Date(pkg.createdAt).toLocaleDateString("en-US", {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPackage() {
+      const { data, error: queryError } = await supabase
+        .from("recommendation_packages")
+        .select(`
+          *,
+          client_requirements (*),
+          generated_pdfs (*),
+          generated_videos (*)
+        `)
+        .eq("id", packageId)
+        .single();
+
+      if (cancelled) return;
+
+      if (queryError || !data) {
+        setError(queryError?.message || "Could not load this package.");
+        setLoading(false);
+        return;
+      }
+
+      setPkg(data as PackageDetailRow);
+      setLoading(false);
+    }
+
+    loadPackage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [packageId]);
+
+  const refCode = (pkg?.id ?? packageId).slice(0, 8).toUpperCase();
+  const dateLabel = new Date(pkg?.created_at ?? Date.now()).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
-  const clientName = pkg.requirement?.clientName ?? "Client";
-  const brief = pkg.requirement?.refinedRequirementsJson
-    ? `${pkg.requirement.refinedRequirementsJson.bedrooms}BHK ${pkg.requirement.refinedRequirementsJson.propertyType} - ${pkg.requirement.refinedRequirementsJson.location}`
-    : pkg.packageTitle;
+  const clientName = pkg?.client_requirements?.client_name ?? "Client";
+  const brief = useMemo(
+    () => refinedBrief(pkg?.client_requirements?.refined_requirements_json ?? null) ?? pkg?.package_title ?? "Generated recommendation package",
+    [pkg],
+  );
 
-  const propshortId = pkg.videos?.[0]?.id ?? `${packageId}-video`;
-  const pdfId = pkg.pdfId ?? `${packageId}-pdf`;
+  const propshortId = pkg?.video_id ?? `${packageId}-video`;
+  const pdfId = pkg?.pdf_id ?? `${packageId}-pdf`;
 
   function handleShare() {
     setShared(true);
@@ -43,10 +101,11 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
               Ready.
             </h1>
             <p className="mx-auto mt-3 max-w-[220px] text-[18px] font-normal leading-relaxed text-black/50">
-              Your PropShort and PDF are ready to share with your client.
+              {loading ? "Loading your generated package." : error ? error : "Your PropShort and PDF are ready to share with your client."}
             </p>
           </div>
 
+          {!loading && !error ? (
           <div className="flex w-full flex-col gap-4">
             <Link
               href={`/propshorts/${propshortId}`}
@@ -104,11 +163,13 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
               </div>
             </Link>
           </div>
+          ) : null}
         </main>
 
         <footer className="mx-auto flex w-full max-w-[500px] flex-col items-center gap-5 pb-14 pt-8">
           <button
             onClick={handleShare}
+            disabled={!pkg}
             className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
           >
             {shared ? "Link Copied!" : "Share"}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import CreateFlowShell from "@/components/create/CreateFlowShell";
@@ -7,7 +8,6 @@ import { supabase } from "@/lib/supabase/client";
 import type { Database, Json } from "@/lib/supabase/database.types";
 
 const CHECK_BTN_SIZE = 64;
-const MOCK_RUN_ID = "run-001";
 
 type ClientRequirementRow = Database["public"]["Tables"]["client_requirements"]["Row"];
 
@@ -39,6 +39,16 @@ interface ParseRequirementResponse {
     code: string;
     message: string;
     details?: unknown;
+  };
+}
+
+interface StartRecommendationRunResponse {
+  success: boolean;
+  run_id?: string;
+  package_id?: string;
+  error?: {
+    code: string;
+    message: string;
   };
 }
 
@@ -91,11 +101,29 @@ function formatValue(value: string | number | null | undefined) {
   return String(value);
 }
 
+async function getFunctionErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== "object") return fallback;
+
+  const maybeContext = (error as { context?: unknown }).context;
+  if (maybeContext instanceof Response) {
+    try {
+      const body = await maybeContext.clone().json() as { error?: { message?: string }; message?: string };
+      return body.error?.message || body.message || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function CreateConfirmPage() {
+  const router = useRouter();
   const [requirement, setRequirement] = useState<ClientRequirementRow | null>(null);
   const [refined, setRefined] = useState<RefinedRequirement | null>(null);
   const [loading, setLoading] = useState(true);
   const [parsing, setParsing] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -172,7 +200,37 @@ export default function CreateConfirmPage() {
     };
   }, []);
 
-  const canContinue = Boolean(requirement && refined && !loading && !parsing && !error);
+  const canContinue = Boolean(requirement && refined && !loading && !parsing && !generating && !error);
+
+  async function handleGenerate() {
+    if (!requirement || generating) return;
+
+    setGenerating(true);
+    setError("");
+
+    const { data, error: invokeError } = await supabase.functions.invoke<StartRecommendationRunResponse>(
+      "start-recommendation-run",
+      {
+        body: {
+          requirement_id: requirement.id,
+        },
+      },
+    );
+
+    setGenerating(false);
+
+    if (invokeError) {
+      setError(await getFunctionErrorMessage(invokeError, "Could not generate this package."));
+      return;
+    }
+
+    if (!data?.success || !data.package_id) {
+      setError(data?.error?.message || "Could not generate this package.");
+      return;
+    }
+
+    router.push(`/packages/${data.package_id}`);
+  }
 
   return (
     <CreateFlowShell activeStep="confirm">
@@ -263,26 +321,32 @@ export default function CreateConfirmPage() {
         </section>
 
         <div className="flex flex-col items-center gap-6">
-          {canContinue && requirement ? (
-            <Link
-              href={`/create/processing/${MOCK_RUN_ID}?requirementId=${encodeURIComponent(requirement.id)}`}
+          {requirement && refined && !loading && !parsing && !error ? (
+            <button
+              type="button"
+              onClick={handleGenerate}
               aria-label="Confirm and generate"
-              className="flex items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className="flex items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
               style={{ width: CHECK_BTN_SIZE, height: CHECK_BTN_SIZE }}
+              disabled={!canContinue}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                style={{ width: CHECK_BTN_SIZE * 0.45, height: CHECK_BTN_SIZE * 0.45 }}
-              >
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-            </Link>
+              {generating ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  style={{ width: CHECK_BTN_SIZE * 0.45, height: CHECK_BTN_SIZE * 0.45 }}
+                >
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
           ) : null}
 
           <Link

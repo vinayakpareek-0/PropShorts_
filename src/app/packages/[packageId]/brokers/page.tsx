@@ -10,10 +10,6 @@ interface BrokersPageProps {
   params: Promise<{ packageId: string }>;
 }
 
-export function generateStaticParams() {
-  return [{ packageId: "pkg-001" }, { packageId: "pkg-002" }, { packageId: "pkg-003" }];
-}
-
 export default async function ListingBrokersPage({ params }: BrokersPageProps) {
   const { packageId } = await params;
 
