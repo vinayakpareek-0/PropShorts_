@@ -4,6 +4,10 @@ interface SharePageProps {
   params: Promise<{ shareSlug: string }>;
 }
 
+export function generateStaticParams() {
+  return [{ shareSlug: "sample" }];
+}
+
 export default async function SharePage({ params }: SharePageProps) {
   const { shareSlug } = await params;
   const pkg = mockPackageDetail;

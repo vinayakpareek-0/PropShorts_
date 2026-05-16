@@ -1,4 +1,4 @@
-import AppHeader from "./AppHeader";
+import SidebarShell from "./SidebarShell";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -6,9 +6,8 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
-    </div>
+    <SidebarShell>
+      <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">{children}</div>
+    </SidebarShell>
   );
 }

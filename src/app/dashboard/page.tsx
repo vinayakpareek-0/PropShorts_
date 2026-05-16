@@ -1,73 +1,138 @@
-import Image from "next/image";
 import Link from "next/link";
-import PropShortsLogo from "@/components/PropShortsLogo";
-import GradientCta from "@/components/dashboard/GradientCta";
-import CircularNavButton from "@/components/dashboard/CircularNavButton";
+import SidebarShell from "@/components/layout/SidebarShell";
 
-// ─── Tweak these to resize the dashboard ──────────────────────────────────────
-const LOGO_WIDTH      = 260;   // px — width of the tm.png logo at the top
-const CTA_SIZE        = 300;   // px — outer diameter of the gradient circle
-const NAV_BTN_SIZE    = 72;    // px — diameter of the three bottom circles
-const NAV_GAP         = "gap-10"; // Tailwind gap between the three circles
-const CTA_LABEL_SIZE  = "text-[38px]"; // "Send Propshort" font size
-// ──────────────────────────────────────────────────────────────────────────────
+const stats = [
+  { label: "PDFs", value: "8", meta: "of 30 this month" },
+  { label: "PropShorts", value: "22", meta: "of 30 this month" },
+  { label: "Shared", value: "14", meta: "client packages" },
+];
+
+const recent = [
+  { name: "John Smith", brief: "3BHK - Bandra, Mumbai", date: "May 1", status: "Ready" },
+  { name: "Priya Nair", brief: "2BHK - Andheri, Mumbai", date: "May 5", status: "Ready" },
+  { name: "Arjun Kapoor", brief: "Villa - Lonavala", date: "May 12", status: "Processing" },
+];
+
+const quickLinks = [
+  { href: "/propshorts", label: "PropShorts", sub: "Video packages", tone: "bg-[#d489ff]" },
+  { href: "/pdfs", label: "PDFs", sub: "Generated reports", tone: "bg-[#c8cc7c]" },
+  { href: "/tips", label: "Tips", sub: "Better briefs", tone: "bg-[#8ecae6]" },
+  { href: "/account", label: "Account", sub: "Profile settings", tone: "bg-[#f0d35f]" },
+];
 
 export default function DashboardPage() {
   return (
-    <div className="flex min-h-screen select-none flex-col items-center justify-between overflow-hidden bg-white text-black">
-      {/* Header — logo */}
-      <header className="flex w-full justify-center pb-8 pt-14">
-        <PropShortsLogo width={LOGO_WIDTH} />
-      </header>
+    <SidebarShell>
+      <div className="min-h-full bg-white px-4 py-5 text-black sm:px-6 sm:py-8 lg:px-8">
+        <header className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <section className="rounded-3xl bg-[#f2f2f2] p-5 text-black sm:p-8">
+            <p className="text-[13px] font-medium uppercase tracking-[0.24em] text-black/35">
+              Dashboard
+            </p>
+            <h1 className="mt-4 text-[42px] font-light leading-none tracking-[-0.03em] sm:text-[58px]">
+              Hi, Rahul.
+            </h1>
+            <p className="mt-5 max-w-2xl text-[16px] leading-7 text-black/50">
+              Create a new recommendation package, or continue from your recent PropShorts and reports.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/new-propshort"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black px-5 text-[14px] font-semibold text-white transition-opacity hover:opacity-80"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                New PropShort
+              </Link>
+              <Link
+                href="/tips"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-white px-5 text-[14px] font-semibold text-black transition-colors hover:bg-black/[0.04]"
+              >
+                Improve Brief
+              </Link>
+            </div>
+          </section>
 
-      {/* Main — gradient CTA */}
-      <main className="flex w-full flex-1 flex-col items-center justify-center px-4">
-        <Link href="/create/select" aria-label="Send Propshort">
-          <GradientCta size={CTA_SIZE} />
-        </Link>
-        <h2 className={`mt-10 font-normal tracking-tight ${CTA_LABEL_SIZE}`}>
-          Send Propshort
-        </h2>
-      </main>
+          <section className="rounded-3xl bg-[#f5f5f5] p-5 sm:p-6">
+            <p className="text-[13px] font-medium uppercase tracking-[0.22em] text-black/35">
+              This month
+            </p>
+            <div className="mt-5 grid gap-3">
+              {stats.map((stat) => (
+                <div key={stat.label} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3">
+                  <div>
+                    <p className="text-[14px] font-semibold text-black">{stat.label}</p>
+                    <p className="text-[12px] text-black/35">{stat.meta}</p>
+                  </div>
+                  <p className="text-[28px] font-semibold leading-none text-black">{stat.value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </header>
 
-      {/* Footer — nav buttons */}
-      <footer className="flex w-full flex-col items-center gap-6 pb-16 pt-8">
-        <p className="text-lg font-medium tracking-wide">Tips</p>
-        <nav className={`flex items-center justify-center ${NAV_GAP}`} aria-label="Quick navigation">
-          <CircularNavButton href="/pdfs" label="My PDFs" size={NAV_BTN_SIZE}>
-            <span className="text-base font-bold tracking-wider">PDF</span>
-          </CircularNavButton>
+        <main className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <section className="rounded-3xl border border-black/[0.06] bg-white p-5 sm:p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[13px] font-medium uppercase tracking-[0.22em] text-black/35">
+                  Work queue
+                </p>
+                <h2 className="mt-1 text-[24px] font-semibold text-black">Recent packages</h2>
+              </div>
+              <Link href="/propshorts" className="text-[13px] font-medium text-black/45 hover:text-black">
+                View all
+              </Link>
+            </div>
 
-          <CircularNavButton href="/tips" label="Tips" size={NAV_BTN_SIZE}>
-            <Image
-              src="/icon.png"
-              alt=""
-              width={32}
-              height={32}
-              className="object-contain invert"
-              style={{ width: NAV_BTN_SIZE * 0.45, height: NAV_BTN_SIZE * 0.45 }}
-              aria-hidden
-            />
-          </CircularNavButton>
+            <div className="grid gap-3">
+              {recent.map((item) => (
+                <div
+                  key={item.name}
+                  className="grid gap-3 rounded-2xl bg-[#f5f5f5] p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[16px] font-semibold text-black">{item.name}</p>
+                    <p className="mt-0.5 truncate text-[13px] text-black/45">{item.brief}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[12px] text-black/35">{item.date}</span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                        item.status === "Ready" ? "bg-[#c8cc7c]/55 text-black/70" : "bg-white text-black/35"
+                      }`}
+                    >
+                      {item.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
-          <CircularNavButton href="/account" label="Account" size={NAV_BTN_SIZE}>
-            <svg
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              style={{ width: NAV_BTN_SIZE * 0.38, height: NAV_BTN_SIZE * 0.38 }}
-            >
-              <path
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </svg>
-          </CircularNavButton>
-        </nav>
-      </footer>
-    </div>
+          <aside>
+            <section className="rounded-3xl border border-black/[0.06] bg-white p-5 sm:p-6">
+              <p className="text-[13px] font-medium uppercase tracking-[0.22em] text-black/35">
+                Shortcuts
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+                {quickLinks.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-2xl bg-[#f5f5f5] p-4 transition-colors hover:bg-[#eeeeee]"
+                  >
+                    <span className={`block h-3 w-10 rounded-full ${item.tone}`} />
+                    <p className="mt-4 text-[15px] font-semibold text-black">{item.label}</p>
+                    <p className="mt-0.5 text-[12px] text-black/40">{item.sub}</p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </main>
+      </div>
+    </SidebarShell>
   );
 }

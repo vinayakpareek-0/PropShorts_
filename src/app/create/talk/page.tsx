@@ -1,69 +1,58 @@
-import CreateLayout from "@/components/layout/CreateLayout";
 import Link from "next/link";
+import CreateFlowShell from "@/components/create/CreateFlowShell";
+
+const ORB_SIZE = 224;
+const KEYBOARD_SIZE = 64;
 
 export default function CreateTalkPage() {
   return (
-    <CreateLayout
-      title="Tell me about the client"
-      subtitle="Speak or upload a voice note describing what your client is looking for."
-      step={2}
-      totalSteps={4}
-    >
-      <div className="space-y-6">
-        {/* Listening orb area */}
-        <div className="flex flex-col items-center rounded-2xl bg-white py-16 shadow-sm ring-1 ring-gray-200">
-          <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-indigo-100">
-            <div className="absolute inset-0 animate-ping rounded-full bg-indigo-200 opacity-50" />
-            <div className="relative h-20 w-20 rounded-full bg-indigo-600 flex items-center justify-center text-3xl text-white">
-              🎤
-            </div>
+    <CreateFlowShell activeStep="talk">
+        <main className="mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center">
+          <div className="mb-16 flex flex-col items-center text-center">
+            <h1 className="mb-4 text-[52px] font-light leading-[1.1] tracking-[-0.02em] text-black sm:text-[74px]">
+              Talk.
+            </h1>
+            <p className="max-w-xs text-[18px] font-normal leading-relaxed text-black">
+              Describe the property the client rejected. Be detailed.
+            </p>
           </div>
-          <p className="mt-6 text-lg font-medium text-gray-700">Tap to start recording</p>
-          <p className="mt-1 text-sm text-gray-400">Describe the client&apos;s property requirement</p>
-        </div>
 
-        {/* Upload alternative */}
-        <div className="rounded-xl border-2 border-dashed border-gray-300 p-6 text-center hover:border-indigo-400">
-          <p className="text-sm font-medium text-gray-600">Or upload a voice note</p>
-          <p className="mt-1 text-xs text-gray-400">MP3, M4A, WAV up to 25MB</p>
-          <button className="mt-3 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
-            Choose file
-          </button>
-        </div>
+          <div
+            className="relative mb-8 flex cursor-pointer items-center justify-center rounded-full bg-gradient-to-tr from-[#a855f7] via-[#0ea5e9] to-[#86efac] transition-transform duration-300 hover:scale-105"
+            style={{ width: `min(${ORB_SIZE}px, 58vw)`, height: `min(${ORB_SIZE}px, 58vw)` }}
+          >
+            <div className="absolute inset-0 rounded-full bg-gradient-to-bl from-transparent via-white/20 to-transparent mix-blend-overlay" />
+          </div>
 
-        {/* Helper text */}
-        <div className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-700">
-          <p className="font-medium">What to describe:</p>
-          <ul className="mt-2 list-inside list-disc space-y-1 text-indigo-600">
-            <li>Client&apos;s name</li>
-            <li>Location preference</li>
-            <li>Budget range</li>
-            <li>Property type and size</li>
-            <li>Any specific requirements</li>
-          </ul>
-        </div>
+          <p className="text-[14px] font-medium tracking-[0.05em] text-black">
+            Tap to Interrupt
+          </p>
+        </main>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between">
-          <Link href="/create/select" className="text-sm font-medium text-gray-500 hover:text-gray-700">
-            ← Back
+        <footer className="flex w-full flex-col items-center gap-6 bg-white pb-16 pt-8">
+          <Link
+            href="/create/write"
+            aria-label="Switch to typed input"
+            className="flex items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            style={{ width: KEYBOARD_SIZE, height: KEYBOARD_SIZE }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+              style={{ width: KEYBOARD_SIZE * 0.45, height: KEYBOARD_SIZE * 0.45 }}
+            >
+              <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 5H5v-2h2v2zm9 0H8v-2h8v2zm0-3h-2v-2h2v2zm0-3h-2V8h2v2zm3 6h-2v-2h2v2zm0-3h-2v-2h2v2zm0-3h-2V8h2v2z" />
+            </svg>
           </Link>
-          <div className="flex gap-3">
-            <Link
-              href="/create/write"
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Type instead
-            </Link>
-            <Link
-              href="/create/confirm"
-              className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >
-              Continue →
-            </Link>
-          </div>
-        </div>
-      </div>
-    </CreateLayout>
+
+          <Link
+            href="/create/select"
+            className="mb-4 text-[22px] font-normal text-black transition-opacity hover:opacity-50"
+          >
+            Cancel
+          </Link>
+        </footer>
+    </CreateFlowShell>
   );
 }

@@ -30,22 +30,22 @@ export default function PdfListItem({
   }
 
   return (
-    <div className="flex items-center gap-5 rounded-xl bg-white border border-[#e2e2e2] p-5 hover:shadow-sm transition-shadow">
+    <div className="flex flex-col gap-4 rounded-xl border border-[#e2e2e2] bg-white p-4 transition-shadow hover:shadow-sm sm:flex-row sm:items-center sm:gap-5 sm:p-5">
       {/* Left + middle: link to PDF detail */}
       <Link
         href={`/pdfs/${id}`}
-        className="flex items-center gap-5 flex-1 min-w-0"
+        className="flex min-w-0 flex-1 items-center gap-4 sm:gap-5"
       >
         {/* PDF thumbnail */}
-        <div className="flex-shrink-0 w-20 h-24 rounded-lg bg-black flex items-center justify-center">
+        <div className="flex h-20 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-black sm:h-24 sm:w-20">
           <span className="text-white text-[18px] font-bold tracking-tighter">PDF</span>
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-[20px] font-semibold leading-tight text-black">{clientName}</h3>
+          <h3 className="text-[18px] font-semibold leading-tight text-black sm:text-[20px]">{clientName}</h3>
           <p className="mt-0.5 text-[15px] text-black/60 line-clamp-1">{description}</p>
-          <div className="mt-2 flex items-center gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="text-[12px] font-medium text-black/50 bg-[#f3f3f3] px-2.5 py-0.5 rounded-full">
               REF: {refCode}
             </span>
@@ -55,7 +55,7 @@ export default function PdfListItem({
       </Link>
 
       {/* Actions */}
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center justify-end gap-3">
         {/* Phone → listing brokers */}
         <Link
           href={`/packages/${packageId}/brokers`}

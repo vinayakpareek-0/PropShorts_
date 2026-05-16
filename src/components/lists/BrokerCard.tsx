@@ -19,7 +19,7 @@ export default function BrokerCard({
 }: BrokerCardProps) {
   return (
     <div
-      className="flex items-center justify-between gap-6 rounded-2xl p-8 transition-transform duration-200 active:scale-[0.98]"
+      className="flex flex-col items-start justify-between gap-6 rounded-2xl p-5 transition-transform duration-200 active:scale-[0.98] sm:flex-row sm:items-center sm:p-8"
       style={{ background: bgColor }}
     >
       {/* Property + broker info */}

@@ -34,7 +34,7 @@ export default function PropShortListItem({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f3f3f3] border border-[#e2e2e2] p-4 hover:bg-[#eeeeee] transition-colors">
+    <div className="flex flex-col gap-4 rounded-xl border border-[#e2e2e2] bg-[#f3f3f3] p-4 transition-colors hover:bg-[#eeeeee] sm:flex-row sm:items-center sm:justify-between">
       {/* Left + middle: link to propshort detail */}
       <Link href={`/propshorts/${id}`} className="flex items-center gap-4 flex-1 min-w-0">
         {/* Thumbnail */}
@@ -56,7 +56,7 @@ export default function PropShortListItem({
       </Link>
 
       {/* Right: date + actions */}
-      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end sm:gap-2">
         <span className="text-[12px] text-black/40">{date}</span>
         <div className="flex items-center gap-2.5">
           {/* PDF → pdf detail */}
