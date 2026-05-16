@@ -146,3 +146,19 @@ export interface PackageDetail extends RecommendationPackage {
 }
 
 export type OutputType = "propshort_and_pdf" | "pdf_only";
+
+export type {
+  AgentProfileInput,
+  ClientSafeProperty,
+  GeneratePackageInput,
+  InternalPropertyTrace,
+  PackageGenerationResult,
+  PackageStatus,
+  PropertyCategory,
+  PropertyHandoffNotes,
+  PropertyImageReference,
+  PropertySearchResult,
+  PropShortsVideoPlan,
+  RentOrBuy,
+  VideoPlanScene,
+} from "@/lib/propshorts/types";
