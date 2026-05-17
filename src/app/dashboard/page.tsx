@@ -1,17 +1,19 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
-
-const stats = [
-  { label: "PDFs", value: "8", meta: "of 30 this month" },
-  { label: "PropShorts", value: "22", meta: "of 30 this month" },
-  { label: "Shared", value: "14", meta: "client packages" },
-];
-
-const recent = [
-  { name: "John Smith", brief: "3BHK - Bandra, Mumbai", date: "May 1", status: "Ready" },
-  { name: "Priya Nair", brief: "2BHK - Andheri, Mumbai", date: "May 5", status: "Ready" },
-  { name: "Arjun Kapoor", brief: "Villa - Lonavala", date: "May 12", status: "Processing" },
-];
+import { useAuth } from "@/components/auth/AuthProvider";
+import {
+  STARTER_PLAN,
+  briefFromRequirement,
+  fetchBrokerProfile,
+  fetchUsageSummary,
+  refCode,
+  shortDate,
+  type BrokerProfileRow,
+  type GeneratedPackageRow,
+} from "@/lib/propshorts/clientData";
 
 const quickLinks = [
   { href: "/propshorts", label: "PropShorts", sub: "Video packages", tone: "bg-[#d489ff]" },
@@ -21,6 +23,39 @@ const quickLinks = [
 ];
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<BrokerProfileRow | null>(null);
+  const [recent, setRecent] = useState<GeneratedPackageRow[]>([]);
+  const [stats, setStats] = useState({ pdfs: 0, propshorts: 0, packages: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDashboard() {
+      try {
+        const [profileRow, usage] = await Promise.all([fetchBrokerProfile(), fetchUsageSummary()]);
+        if (cancelled) return;
+        setProfile(profileRow);
+        setStats({ pdfs: usage.pdfs, propshorts: usage.propshorts, packages: usage.packages });
+        setRecent(usage.recent);
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load dashboard data.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const firstName = profile?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "Broker";
+
   return (
     <SidebarShell>
       <div className="min-h-full bg-white px-4 py-5 text-black sm:px-6 sm:py-8 lg:px-8">
@@ -30,10 +65,10 @@ export default function DashboardPage() {
               Dashboard
             </p>
             <h1 className="mt-4 text-[42px] font-light leading-none tracking-[-0.03em] sm:text-[58px]">
-              Hi, Rahul.
+              Hi, {firstName}.
             </h1>
             <p className="mt-5 max-w-2xl text-[16px] leading-7 text-black/50">
-              Create a new recommendation package, or continue from your recent PropShorts and reports.
+              Create a recommendation package, or continue from generated PropShorts and reports.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
@@ -59,13 +94,17 @@ export default function DashboardPage() {
               This month
             </p>
             <div className="mt-5 grid gap-3">
-              {stats.map((stat) => (
+              {[
+                { label: "PDFs", value: stats.pdfs, meta: `of ${STARTER_PLAN.monthlyPdfLimit} on Starter` },
+                { label: "PropShorts", value: stats.propshorts, meta: `of ${STARTER_PLAN.monthlyPropShortLimit} on Starter` },
+                { label: "Packages", value: stats.packages, meta: "completed and saved" },
+              ].map((stat) => (
                 <div key={stat.label} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3">
                   <div>
                     <p className="text-[14px] font-semibold text-black">{stat.label}</p>
                     <p className="text-[12px] text-black/35">{stat.meta}</p>
                   </div>
-                  <p className="text-[28px] font-semibold leading-none text-black">{stat.value}</p>
+                  <p className="text-[28px] font-semibold leading-none text-black">{loading ? "-" : stat.value}</p>
                 </div>
               ))}
             </div>
@@ -86,29 +125,36 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div className="grid gap-3">
-              {recent.map((item) => (
-                <div
-                  key={item.name}
-                  className="grid gap-3 rounded-2xl bg-[#f5f5f5] p-4 sm:grid-cols-[1fr_auto] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <p className="text-[16px] font-semibold text-black">{item.name}</p>
-                    <p className="mt-0.5 truncate text-[13px] text-black/45">{item.brief}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[12px] text-black/35">{item.date}</span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                        item.status === "Ready" ? "bg-[#c8cc7c]/55 text-black/70" : "bg-white text-black/35"
-                      }`}
-                    >
-                      {item.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {error ? (
+              <div className="rounded-2xl bg-red-50 p-5 text-[14px] text-red-600">{error}</div>
+            ) : loading ? (
+              <div className="rounded-2xl bg-[#f5f5f5] p-5 text-[14px] text-black/45">Loading generated packages...</div>
+            ) : recent.length === 0 ? (
+              <div className="rounded-2xl bg-[#f5f5f5] p-5 text-[14px] text-black/45">
+                No generated packages yet.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {recent.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/packages/${item.id}`}
+                    className="grid gap-3 rounded-2xl bg-[#f5f5f5] p-4 transition-colors hover:bg-[#eeeeee] sm:grid-cols-[1fr_auto] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[16px] font-semibold text-black">{item.client_requirements?.client_name || "Client"}</p>
+                      <p className="mt-0.5 truncate text-[13px] text-black/45">{briefFromRequirement(item.client_requirements)}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[12px] text-black/35">{shortDate(item.created_at)}</span>
+                      <span className="rounded-full bg-[#c8cc7c]/55 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-black/70">
+                        {item.status || refCode(item.id)}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
 
           <aside>

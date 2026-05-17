@@ -84,8 +84,8 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
     [pkg],
   );
 
-  const propshortId = pkg?.video_id ?? `${packageId}-video`;
-  const pdfId = pkg?.pdf_id ?? `${packageId}-pdf`;
+  const propshortId = pkg?.generated_videos?.id || pkg?.video_id || "";
+  const pdfId = pkg?.generated_pdfs?.id || pkg?.pdf_id || "";
 
   function handleShare() {
     setShared(true);
@@ -107,6 +107,7 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
 
           {!loading && !error ? (
           <div className="flex w-full flex-col gap-4">
+            {propshortId ? (
             <Link
               href={`/propshorts/${propshortId}`}
               className="flex w-full items-center gap-5 rounded-2xl bg-[#f2f2f2] p-4 transition-opacity hover:opacity-80"
@@ -140,7 +141,9 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
                 </div>
               </div>
             </Link>
+            ) : null}
 
+            {pdfId ? (
             <Link
               href={`/pdfs/${pdfId}`}
               className="flex w-full items-center gap-5 rounded-2xl bg-[#f2f2f2] p-4 transition-opacity hover:opacity-80"
@@ -162,6 +165,13 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
                 </div>
               </div>
             </Link>
+            ) : null}
+
+            {!propshortId && !pdfId ? (
+              <div className="rounded-2xl bg-[#f2f2f2] p-5 text-center text-[14px] text-black/45">
+                This package does not have generated output records yet.
+              </div>
+            ) : null}
           </div>
           ) : null}
         </main>

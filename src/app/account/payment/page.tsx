@@ -11,7 +11,7 @@ export default function PaymentPage() {
           </Link>
           <h1 className="mt-3 text-[40px] font-light leading-none tracking-[-0.02em] text-black sm:text-[56px]">Payment.</h1>
           <p className="mt-4 max-w-xl text-[15px] leading-6 text-black/50">
-            Billing is not connected in the frontend phase. This page is a themed placeholder for later setup.
+            Stripe is not connected yet, so no payment methods are stored for this account.
           </p>
         </header>
 
@@ -27,7 +27,7 @@ export default function PaymentPage() {
                 </div>
                 <div>
                   <p className="text-[20px] font-semibold text-black">No card on file</p>
-                  <p className="mt-1 text-[14px] text-black/45">Payment collection will be added after billing decisions.</p>
+                  <p className="mt-1 text-[14px] text-black/45">The Starter plan is visible for testing, but checkout is disabled until Stripe is integrated.</p>
                 </div>
               </div>
             </div>
@@ -38,10 +38,10 @@ export default function PaymentPage() {
           </section>
 
           <aside className="rounded-3xl bg-[#c8cc7c] p-6 text-black">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-black/45">MVP note</p>
-            <h2 className="mt-3 text-[24px] font-semibold leading-tight">No billing work yet.</h2>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-black/45">Current billing state</p>
+            <h2 className="mt-3 text-[24px] font-semibold leading-tight">Payments are not active.</h2>
             <p className="mt-3 text-[14px] leading-6 text-black/60">
-              Subscription and payment flows stay mocked until auth, database records, and plan rules are finalized.
+              No mock card or invoice data is shown here. Once Stripe is added, this page should read the customer and payment method records.
             </p>
             <Link
               href="/account/subscription"

@@ -1,11 +1,88 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
-import { mockBroker } from "@/data/mock";
+import { useAuth } from "@/components/auth/AuthProvider";
+import {
+  fetchBrokerProfile,
+  saveBrokerProfile,
+  type BrokerProfileRow,
+} from "@/lib/propshorts/clientData";
 
 const inputClass =
   "mt-2 block w-full rounded-2xl border border-black/[0.06] bg-[#f5f5f5] px-4 py-3 text-[14px] text-black outline-none transition-shadow focus:ring-2 focus:ring-black/10";
 
 export default function ProfilePage() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<BrokerProfileRow | null>(null);
+  const [values, setValues] = useState({ full_name: "", company_name: "", email: "", phone: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      try {
+        const row = await fetchBrokerProfile();
+        if (cancelled) return;
+        setProfile(row);
+        setValues({
+          full_name: row?.full_name || "",
+          company_name: row?.company_name || "",
+          email: row?.email || user?.email || "",
+          phone: row?.phone || "",
+        });
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load profile.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
+
+  const initials = useMemo(() => {
+    const source = values.full_name || values.email || "Broker";
+    return source
+      .split(/\s|@/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "BR";
+  }, [values.email, values.full_name]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const saved = await saveBrokerProfile(values);
+      setProfile(saved);
+      setValues({
+        full_name: saved.full_name || "",
+        company_name: saved.company_name || "",
+        email: saved.email || user?.email || "",
+        phone: saved.phone || "",
+      });
+      setMessage("Profile saved.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <AppLayout>
       <div className="mx-auto max-w-5xl">
@@ -15,47 +92,80 @@ export default function ProfilePage() {
           </Link>
           <h1 className="mt-3 text-[40px] font-light leading-none tracking-[-0.02em] text-black sm:text-[56px]">Profile.</h1>
           <p className="mt-4 max-w-xl text-[15px] leading-6 text-black/50">
-            Keep the broker details clients will see in future packages and reports.
+            Broker details are loaded from your Supabase profile record.
           </p>
         </header>
 
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <aside className="rounded-3xl bg-black p-6 text-white">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[20px] font-semibold text-black">
-              RM
+              {initials}
             </div>
-            <h2 className="mt-5 text-[24px] font-semibold leading-tight">{mockBroker.fullName}</h2>
-            <p className="mt-1 text-[14px] text-white/55">{mockBroker.companyName}</p>
+            <h2 className="mt-5 text-[24px] font-semibold leading-tight">{values.full_name || "Profile not completed"}</h2>
+            <p className="mt-1 text-[14px] text-white/55">{values.company_name || values.email || "Add your broker details"}</p>
             <div className="mt-6 rounded-2xl bg-white/10 p-4">
               <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-white/40">Role</p>
-              <p className="mt-1 text-[15px] text-white/75">Broker</p>
+              <p className="mt-1 text-[15px] text-white/75">{profile?.role || "broker"}</p>
             </div>
           </aside>
 
           <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.06]">
-            <form className="grid gap-5 sm:grid-cols-2">
-              <label className="text-[13px] font-medium text-black/55">
-                Full name
-                <input type="text" defaultValue={mockBroker.fullName} className={inputClass} />
-              </label>
-              <label className="text-[13px] font-medium text-black/55">
-                Company name
-                <input type="text" defaultValue={mockBroker.companyName} className={inputClass} />
-              </label>
-              <label className="text-[13px] font-medium text-black/55">
-                Email
-                <input type="email" defaultValue={mockBroker.email} className={inputClass} />
-              </label>
-              <label className="text-[13px] font-medium text-black/55">
-                Phone
-                <input type="tel" defaultValue={mockBroker.phone} className={inputClass} />
-              </label>
-              <div className="sm:col-span-2 flex justify-end pt-2">
-                <button type="submit" className="rounded-xl bg-black px-5 py-3 text-[14px] font-semibold text-white transition-opacity hover:opacity-80">
-                  Save Changes
-                </button>
-              </div>
-            </form>
+            {loading ? (
+              <div className="rounded-2xl bg-[#f5f5f5] p-5 text-[14px] text-black/45">Loading profile...</div>
+            ) : (
+              <form onSubmit={handleSubmit} className="grid gap-5 sm:grid-cols-2">
+                <label className="text-[13px] font-medium text-black/55">
+                  Full name
+                  <input
+                    type="text"
+                    value={values.full_name}
+                    onChange={(event) => setValues((current) => ({ ...current, full_name: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55">
+                  Company name
+                  <input
+                    type="text"
+                    value={values.company_name}
+                    onChange={(event) => setValues((current) => ({ ...current, company_name: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55">
+                  Email
+                  <input
+                    type="email"
+                    value={values.email}
+                    onChange={(event) => setValues((current) => ({ ...current, email: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55">
+                  Phone
+                  <input
+                    type="tel"
+                    value={values.phone}
+                    onChange={(event) => setValues((current) => ({ ...current, phone: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                {error || message ? (
+                  <p className={`sm:col-span-2 text-[14px] ${error ? "text-red-600" : "text-black/50"}`}>
+                    {error || message}
+                  </p>
+                ) : null}
+                <div className="flex justify-end pt-2 sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-xl bg-black px-5 py-3 text-[14px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-35"
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
         </div>
       </div>

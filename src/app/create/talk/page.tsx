@@ -234,7 +234,7 @@ export default function CreateTalkPage() {
             value={clientName}
             onChange={(event) => setClientName(event.target.value)}
             className="h-12 w-full rounded-2xl border-none bg-[#f3f3f3] px-5 text-center text-[16px] font-normal text-black outline-none transition-shadow placeholder:text-black/30 focus:ring-2 focus:ring-black/10"
-            placeholder="E.g., John Smith"
+            placeholder="Client name"
             autoComplete="off"
             disabled={recordingState === "recording" || recordingState === "submitting"}
           />
