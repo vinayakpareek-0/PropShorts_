@@ -10,7 +10,8 @@ import WebSocket from "ws";
 
 const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
-const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 90000);
+const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
+const fps = 24;
 
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -37,7 +38,7 @@ function getSupabase(accessToken) {
 
 function propertiesFromInput(input) {
   if (!input || typeof input !== "object" || !Array.isArray(input.properties)) return [];
-  return input.properties.slice(0, 3).map((property, index) => {
+  return input.properties.slice(0, 5).map((property, index) => {
     const record = property && typeof property === "object" ? property : {};
     return {
       id: typeof record.id === "string" ? record.id : `property-${index + 1}`,
@@ -45,9 +46,19 @@ function propertiesFromInput(input) {
       area: typeof record.area === "string" ? record.area : null,
       city: typeof record.city === "string" ? record.city : null,
       price_label: typeof record.price_label === "string" ? record.price_label : null,
+      bedrooms: typeof record.bedrooms === "number" ? record.bedrooms : null,
+      bathrooms: typeof record.bathrooms === "number" ? record.bathrooms : null,
+      sqft: typeof record.sqft === "number" ? record.sqft : null,
+      size_label: typeof record.size_label === "string" ? record.size_label : null,
       headline: typeof record.headline === "string" ? record.headline : null,
       description: typeof record.description === "string" ? record.description : null,
       highlights: Array.isArray(record.highlights) ? record.highlights.filter((item) => typeof item === "string") : [],
+      images: Array.isArray(record.images)
+        ? record.images
+          .map((image) => image && typeof image === "object" ? image.url : image)
+          .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))
+          .slice(0, 3)
+        : [],
     };
   });
 }
@@ -71,6 +82,20 @@ function fit(value, max = 78) {
 
 function compact(values) {
   return values.filter((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+function metricLabel(property, imageIndex) {
+  const metrics = [
+    property.bedrooms ? `${property.bedrooms} BED` : null,
+    property.size_label || (property.sqft ? `${property.sqft} SQFT` : null),
+    property.price_label,
+  ].filter(Boolean);
+
+  return metrics[imageIndex] || metrics[0] || "DETAILS IN PDF";
+}
+
+function locationLabel(property) {
+  return compact([property.area, property.city]).join(", ") || "Location on request";
 }
 
 function runFfmpeg(args, videoId) {
@@ -151,41 +176,108 @@ function baseSvg(content) {
       <stop offset="1" stop-color="#c8cc7c"/>
     </linearGradient>
   </defs>
-  <rect width="720" height="1280" fill="url(#bg)"/>
-  <rect x="38" y="38" width="644" height="1204" rx="44" fill="rgba(255,255,255,0.78)"/>
-  <circle cx="96" cy="92" r="24" fill="#080808"/>
-  <text x="136" y="102" fill="#555" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" letter-spacing="6">PROPSHORTS</text>
+  <rect width="720" height="1280" fill="#f3f3f1"/>
   ${content}
-  <rect x="72" y="1160" width="576" height="18" rx="9" fill="rgba(0,0,0,0.12)"/>
-  <rect x="72" y="1160" width="576" height="18" rx="9" fill="#2da7df" opacity="0.82"/>
 </svg>`;
 }
 
-function introSlide(title, clientName) {
+function footerMark() {
+  return `
+    <text x="64" y="1204" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">PS 903</text>
+    <text x="552" y="1204" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">propshorts</text>
+    <rect x="64" y="1234" width="592" height="10" fill="#080808"/>
+  `;
+}
+
+function agentBlock({ x = 64, y = 62, compact = false } = {}) {
+  const logoSize = compact ? 44 : 52;
+  const nameSize = compact ? 17 : 19;
+  const lineGap = compact ? 18 : 20;
+  return `
+    <rect x="${x}" y="${y}" width="${logoSize}" height="${logoSize}" rx="3" fill="#080808"/>
+    <text x="${x + logoSize / 2}" y="${y + logoSize / 2 + 9}" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 19 : 22}" font-weight="900">PS</text>
+    <text x="${x + logoSize + 16}" y="${y + 18}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="700">PropShorts Broker</text>
+    <text x="${x + logoSize + 16}" y="${y + 18 + lineGap}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">PropShorts Real Estate</text>
+    <text x="${x + logoSize + 16}" y="${y + 18 + lineGap * 2}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">Contact via broker</text>
+  `;
+}
+
+function introGreetingSlide(clientName) {
   return baseSvg(`
-    ${textBlock([`Hi ${fit(clientName, 28)}.`], { x: 72, y: 228, size: 38, weight: 700, color: "#555" })}
-    ${textBlock(wrapText(fit(title, 64), 18, 4), { x: 72, y: 322, size: 62, weight: 900, lineHeight: 1.02 })}
-    ${textBlock(["I found three properties that", "match your brief."], { x: 72, y: 610, size: 30, color: "#555", lineHeight: 1.26 })}
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${textBlock(["Hi"], { x: 154, y: 518, size: 148, weight: 900, lineHeight: 0.9 })}
+    ${textBlock([`${fit(clientName, 20)}.`], { x: 160, y: 612, size: 44, weight: 700, lineHeight: 1 })}
+    ${footerMark()}
   `);
 }
 
-function propertySlide(property, index) {
-  const details = compact([property.area, property.city, property.price_label]).join(" - ") || "Details available in the PDF report";
-  const highlights = Array.isArray(property.highlights) ? property.highlights.slice(0, 3).join("  |  ") : "";
+function introContextSlide() {
   return baseSvg(`
-    <rect x="70" y="210" width="580" height="650" rx="34" fill="rgba(255,255,255,0.88)"/>
-    <text x="104" y="270" fill="#8e64d9" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" letter-spacing="5">PROPERTY ${index + 1}</text>
-    ${textBlock(wrapText(property.title || `Property ${index + 1}`, 18, 3), { x: 104, y: 360, size: 48, weight: 900, lineHeight: 1.03 })}
-    ${textBlock(wrapText(details, 36, 2), { x: 104, y: 512, size: 25, color: "#555", lineHeight: 1.24 })}
-    ${textBlock(wrapText(property.headline || property.description || "A strong match for the brief.", 25, 4), { x: 104, y: 630, size: 32, weight: 750, lineHeight: 1.16 })}
-    ${textBlock(wrapText(highlights || "See full report for complete details.", 38, 2), { x: 104, y: 798, size: 22, color: "#555", lineHeight: 1.22 })}
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${textBlock(["Check", "Out", "These", "Properties!"], { x: 160, y: 360, size: 58, weight: 900, lineHeight: 0.94 })}
+    ${agentBlock({ x: 160, y: 690 })}
+    ${footerMark()}
   `);
 }
 
-function outroSlide(script) {
+function propertyNumberSlide(index) {
   return baseSvg(`
-    ${textBlock(["PDF report", "is ready."], { x: 72, y: 390, size: 58, weight: 900, lineHeight: 1.04 })}
-    ${textBlock(wrapText(script || "Let me know which one stands out and I will take care of the next steps.", 34, 4), { x: 72, y: 570, size: 27, color: "#555", lineHeight: 1.28 })}
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    <circle cx="360" cy="610" r="112" fill="#080808"/>
+    <text x="360" y="655" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="128" font-weight="900">${index + 1}</text>
+    ${footerMark()}
+  `);
+}
+
+function imagePanel(imageDataUri) {
+  if (!imageDataUri) {
+    return `
+      <rect x="64" y="210" width="592" height="548" fill="url(#bg)"/>
+      <rect x="64" y="210" width="592" height="548" fill="rgba(255,255,255,0.22)"/>
+    `;
+  }
+
+  return `
+    <clipPath id="photoClip"><rect x="64" y="210" width="592" height="548"/></clipPath>
+    <image href="${imageDataUri}" x="64" y="210" width="592" height="548" preserveAspectRatio="xMidYMid slice" clip-path="url(#photoClip)"/>
+  `;
+}
+
+function propertyImageSlide(property, index, imageIndex, imageDataUri) {
+  const label = `Property ${index + 1}`;
+  const badge = metricLabel(property, imageIndex);
+  const location = locationLabel(property);
+  return baseSvg(`
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${agentBlock({ x: 96, y: 122, compact: true })}
+    ${imagePanel(imageDataUri)}
+    <rect x="96" y="708" width="${Math.max(112, badge.length * 12)}" height="44" fill="#ffffff"/>
+    <text x="116" y="736" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="900">${escapeXml(badge)}</text>
+    <text x="96" y="824" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="500">${escapeXml(label)}</text>
+    <text x="96" y="860" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="900">${escapeXml(fit(location, 26))}</text>
+    <line x1="96" y1="894" x2="540" y2="894" stroke="#111111" stroke-width="1"/>
+    ${textBlock(wrapText(property.headline || property.description || "A strong match for the brief.", 18, 3), { x: 96, y: 956, size: 40, weight: 850, lineHeight: 1.04 })}
+    ${footerMark()}
+  `);
+}
+
+function outroSlide() {
+  return baseSvg(`
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    <rect x="168" y="392" width="230" height="90" rx="10" fill="#080808"/>
+    <text x="283" y="455" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="900">PDF</text>
+    ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 168, y: 560, size: 30, weight: 800, lineHeight: 1.04 })}
+    ${footerMark()}
+  `);
+}
+
+function closingSlide(script) {
+  return baseSvg(`
+    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${textBlock(["Call", "me."], { x: 168, y: 390, size: 90, weight: 900, lineHeight: 0.86 })}
+    ${agentBlock({ x: 168, y: 680 })}
+    ${textBlock(wrapText(script || "Let me know which one stands out and I will take care of the next steps for you.", 28, 4), { x: 168, y: 850, size: 25, color: "#333333", lineHeight: 1.22 })}
+    ${footerMark()}
   `);
 }
 
@@ -195,33 +287,78 @@ async function writeSlide(videoId, index, svg) {
   return filePath;
 }
 
+async function imageDataUri(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "PropShorts/1.0 (+https://propshorts.netlify.app)" },
+    });
+    if (!response.ok) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const jpeg = await sharp(buffer)
+      .resize(900, 900, { fit: "cover", position: "attention" })
+      .jpeg({ quality: 84, mozjpeg: true })
+      .toBuffer();
+
+    return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+  } catch (error) {
+    console.warn(`Could not load property image ${url}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function concatFilePath(value) {
   return String(value).replace(/'/g, "'\\''");
 }
 
 async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientName, script, properties }) {
-  const propertyLines = properties.slice(0, 3);
-  while (propertyLines.length < 3) {
+  const propertyLines = properties.slice(0, 5);
+  while (propertyLines.length < 5) {
     propertyLines.push({
       title: "Property recommendation",
       area: null,
       city: null,
       price_label: null,
+      bedrooms: null,
+      sqft: null,
+      size_label: null,
       headline: "A strong match for the brief.",
       highlights: [],
+      images: [],
     });
   }
 
-  const slideFiles = [
-    await writeSlide(videoId, 0, introSlide(title, clientName)),
-    await writeSlide(videoId, 1, propertySlide(propertyLines[0], 0)),
-    await writeSlide(videoId, 2, propertySlide(propertyLines[1], 1)),
-    await writeSlide(videoId, 3, propertySlide(propertyLines[2], 2)),
-    await writeSlide(videoId, 4, outroSlide(script)),
+  const slides = [
+    { duration: 4, svg: introGreetingSlide(clientName) },
+    { duration: 6, svg: introContextSlide(title) },
   ];
+
+  for (const [propertyIndex, property] of propertyLines.entries()) {
+    slides.push({ duration: 1, svg: propertyNumberSlide(propertyIndex) });
+    for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
+      const imageUrl = property.images[imageIndex] || property.images[0] || null;
+      const image = await imageDataUri(imageUrl);
+      slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image) });
+    }
+  }
+
+  slides.push({ duration: 4, svg: outroSlide(script) });
+  slides.push({ duration: 6, svg: closingSlide(script) });
+
+  const slideFiles = [];
+  for (const [index, slide] of slides.entries()) {
+    slideFiles.push(await writeSlide(videoId, index, slide.svg));
+  }
   const concatPath = path.join(tmpdir(), `propshort-${videoId}-concat.txt`);
   const concatBody = slideFiles
-    .map((file) => `file '${concatFilePath(file)}'\nduration 3`)
+    .map((file, index) => `file '${concatFilePath(file)}'\nduration ${slides[index].duration}`)
     .join("\n")
     .concat(`\nfile '${concatFilePath(slideFiles[slideFiles.length - 1])}'\n`);
 
@@ -242,7 +379,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientNam
       "-pix_fmt",
       "yuv420p",
       "-r",
-      "24",
+      String(fps),
       "-movflags",
       "+faststart",
       outputLocation,

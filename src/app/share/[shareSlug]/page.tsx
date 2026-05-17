@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useState } from "react";
 import {
   fetchGeneratedPackageByShareSlug,
@@ -17,12 +19,20 @@ function highlights(value: PropertyRecommendationRow["highlights"]) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function firstImage(value: PropertyRecommendationRow["images"]) {
+  if (!Array.isArray(value)) return "";
+  const image = value.find((item) => item && typeof item === "object" && !Array.isArray(item) && "url" in item);
+  const record = image && typeof image === "object" && !Array.isArray(image) ? image as { url?: unknown } : null;
+  const url = typeof record?.url === "string" ? record.url : "";
+  return url.startsWith("http") ? url : "";
+}
+
 function videoProperties(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return [];
   const properties = (input as { properties?: unknown }).properties;
   if (!Array.isArray(properties)) return [];
 
-  return properties.slice(0, 3).map((property, index) => {
+  return properties.slice(0, 5).map((property, index) => {
     const record = property && typeof property === "object" ? (property as Record<string, unknown>) : {};
     return {
       id: typeof record.id === "string" ? record.id : `property-${index}`,
@@ -118,12 +128,20 @@ export default function SharePage({ params }: SharePageProps) {
                   No property recommendations were saved for this package.
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                   {properties.map((property) => (
                     <div key={property.id} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-                      <div className="flex h-36 items-center justify-center bg-gray-100 text-sm font-semibold text-gray-400">
-                        {property.property_type || "Property"}
-                      </div>
+                      {firstImage(property.images) ? (
+                        <img
+                          src={firstImage(property.images)}
+                          alt={property.title || "Property recommendation"}
+                          className="h-36 w-full bg-gray-100 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-36 items-center justify-center bg-gray-100 text-sm font-semibold text-gray-400">
+                          {property.property_type || "Property"}
+                        </div>
+                      )}
                       <div className="p-4">
                         <p className="line-clamp-1 font-semibold text-gray-900">{property.title || "Property recommendation"}</p>
                         <p className="mt-0.5 text-sm text-gray-500">{[property.area, property.city].filter(Boolean).join(", ") || "Location unavailable"}</p>

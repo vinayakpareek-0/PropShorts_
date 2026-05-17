@@ -29,7 +29,7 @@ function previewProperties(input: unknown) {
   const properties = (input as { properties?: unknown }).properties;
   if (!Array.isArray(properties)) return [];
 
-  return properties.slice(0, 3).map((property, index) => {
+  return properties.slice(0, 5).map((property, index) => {
     const record = property && typeof property === "object" ? (property as Record<string, unknown>) : {};
     return {
       id: typeof record.id === "string" ? record.id : `property-${index}`,

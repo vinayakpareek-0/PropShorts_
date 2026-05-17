@@ -56,6 +56,37 @@ interface PropertyCandidate {
   };
 }
 
+const PROPERTY_TARGET_COUNT = 5;
+const PROPERTY_IMAGES_PER_OPTION = 3;
+
+const fallbackImageSets = [
+  [
+    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1605276374104-dee2a0ed3cd6?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1200&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1598228723793-52759bba239c?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600566753151-384129cf4e3e?auto=format&fit=crop&w=1200&q=82",
+    "https://images.unsplash.com/photo-1600607688066-890987f18a86?auto=format&fit=crop&w=1200&q=82",
+  ],
+];
+
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -211,10 +242,16 @@ function inferRequirement(requirement: RequirementRow) {
 function buildFallbackProperties(requirement: RequirementRow): PropertyCandidate[] {
   const inferred = inferRequirement(requirement);
   const basePrice = inferred.budget;
-  const areas = [inferred.area, "Central pocket", "Well-connected neighborhood"].filter(Boolean) as string[];
-  while (areas.length < 3) areas.push(inferred.location);
+  const areas = [
+    inferred.area,
+    "Central pocket",
+    "Well-connected neighborhood",
+    "Quieter residential pocket",
+    "Value-led nearby option",
+  ].filter(Boolean) as string[];
+  while (areas.length < PROPERTY_TARGET_COUNT) areas.push(inferred.location);
 
-  return [0, 1, 2].map((index) => {
+  return Array.from({ length: PROPERTY_TARGET_COUNT }, (_, index) => {
     const order = index + 1;
     const title = `${inferred.propertyType.replace(/\b\w/g, (char) => char.toUpperCase())} Option ${order} in ${areas[index]}`;
     const price = basePrice ? Math.round(basePrice * (0.94 + index * 0.03)) : null;
@@ -222,8 +259,14 @@ function buildFallbackProperties(requirement: RequirementRow): PropertyCandidate
       inferred.rentOrBuy === "rent" ? "Move-in friendly" : "Strong end-use fit",
       "Broker-reviewed shortlist",
       "Good connectivity",
-      order === 1 ? "Closest brief match" : order === 2 ? "Balanced value" : "Premium alternative",
+      order === 1 ? "Closest brief match" : order === 2 ? "Balanced value" : order === 3 ? "Lifestyle fit" : order === 4 ? "Extra space" : "Smart backup",
     ];
+    const fallbackImages = fallbackImageSets[index % fallbackImageSets.length].map((url, imageIndex) => ({
+      id: `fallback-${order}-${imageIndex + 1}`,
+      url,
+      alt: `${title} image ${imageIndex + 1}`,
+      role: imageIndex === 0 ? "hero" : imageIndex === 1 ? "interior" : "detail",
+    }));
 
     return {
       external_property_id: `curated-${order}`,
@@ -240,10 +283,10 @@ function buildFallbackProperties(requirement: RequirementRow): PropertyCandidate
       bathrooms: inferred.bathrooms,
       sqft: inferred.sqftMin || inferred.sqftMax,
       size_label: inferred.sqftMin || inferred.sqftMax ? `${inferred.sqftMin ?? inferred.sqftMax} sqft+` : null,
-      headline: order === 1 ? "Closest match to the client brief" : order === 2 ? "A practical value-led option" : "A polished backup worth viewing",
+      headline: order === 1 ? "Closest match to the client brief" : order === 2 ? "A practical value-led option" : order === 3 ? "A strong lifestyle-led fit" : order === 4 ? "More space in a calmer setting" : "A polished backup worth viewing",
       description: `A curated ${inferred.propertyType} match around ${areas[index]} based on the captured requirement: ${inferred.note}`,
       highlights,
-      images: [],
+      images: fallbackImages,
       sort_order: order,
       trace: {
         source_url: null,
@@ -332,17 +375,27 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
   }
 
   const prompt = [
-    "You are the PropShorts property search planner. Return JSON only.",
-    "Create 3 client-safe property recommendations from the broker requirement.",
-    "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, or emails.",
-    "Schema: {\"search_summary\":{\"interpreted_brief\":\"string\",\"assumptions\":[\"string\"],\"property_category\":\"residential|commercial|land\",\"warnings\":[\"string\"]},\"properties\":[{\"external_property_id\":\"string\",\"title\":\"string\",\"area\":\"string|null\",\"city\":\"string|null\",\"property_category\":\"residential|commercial|land\",\"property_type\":\"string|null\",\"rent_or_buy\":\"rent|buy|unknown\",\"price\":number|null,\"price_label\":\"string|null\",\"currency\":\"string|null\",\"bedrooms\":number|null,\"bathrooms\":number|null,\"sqft\":number|null,\"size_label\":\"string|null\",\"headline\":\"string\",\"description\":\"string\",\"highlights\":[\"string\"],\"images\":[],\"trace\":{\"source_url\":null,\"platform\":null,\"listing_id\":null,\"agent_name\":null,\"agent_phone\":null,\"agent_email\":null,\"internal_notes\":\"string|null\"}}]}",
+    "You are the PropShorts Search Agent. Return JSON only.",
+    "Find 5 highly suitable, traceable, client-safe property recommendations from the broker requirement.",
+    "Use live web results when available. Prefer credible listing pages with useful photos. Relevance beats volume.",
+    "Each selected property should include exactly 3 image references when possible: hero/exterior, main interior, and another useful angle.",
+    "Images must be direct, client-safe image URLs when available. If a direct image URL cannot be verified, return fewer images rather than inventing one.",
+    "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
+    "Keep source URLs and third-party listing contact data only inside trace. Never copy third-party contact data into client-safe fields.",
+    "Schema: {\"search_summary\":{\"interpreted_brief\":\"string\",\"assumptions\":[\"string\"],\"property_category\":\"residential|commercial|land\",\"warnings\":[\"string\"]},\"properties\":[{\"external_property_id\":\"string\",\"title\":\"string\",\"area\":\"string|null\",\"city\":\"string|null\",\"property_category\":\"residential|commercial|land\",\"property_type\":\"string|null\",\"rent_or_buy\":\"rent|buy|unknown\",\"price\":number|null,\"price_label\":\"string|null\",\"currency\":\"string|null\",\"bedrooms\":number|null,\"bathrooms\":number|null,\"sqft\":number|null,\"size_label\":\"string|null\",\"headline\":\"string\",\"description\":\"string\",\"highlights\":[\"string\"],\"images\":[{\"id\":\"string\",\"url\":\"https://...\",\"alt\":\"string\",\"role\":\"hero|interior|detail\"}],\"trace\":{\"source_url\":\"string|null\",\"platform\":\"string|null\",\"listing_id\":\"string|null\",\"agent_name\":\"string|null\",\"agent_phone\":\"string|null\",\"agent_email\":\"string|null\",\"internal_notes\":\"string|null\"}}]}",
     `Requirement: ${JSON.stringify(requirement.refined_requirements_json ?? requirement.raw_input ?? requirement.source_url)}`,
   ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4.1-mini", input: prompt, temperature: 0.2 }),
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: prompt,
+      temperature: 0.2,
+      tools: [{ type: "web_search", search_context_size: "medium" }],
+      tool_choice: "auto",
+    }),
   });
 
   if (!response.ok) {
@@ -378,11 +431,17 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
     };
   }
 
+  const fallbackProperties = buildFallbackProperties(requirement);
+  const normalizedProperties = rawProperties.slice(0, PROPERTY_TARGET_COUNT).map((property, index) =>
+    normalizeAiProperty(property, fallbackProperties[index], index)
+  );
+  while (normalizedProperties.length < PROPERTY_TARGET_COUNT) {
+    normalizedProperties.push(fallbackProperties[normalizedProperties.length]);
+  }
+
   return {
     searchSummary: parsed.search_summary as Record<string, unknown>,
-    properties: rawProperties.slice(0, 3).map((property, index) =>
-      normalizeAiProperty(property, buildFallbackProperties(requirement)[index], index)
-    ),
+    properties: normalizedProperties,
   };
 }
 
@@ -504,33 +563,38 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
     return aOrder - bOrder;
   });
   const clientName = requirement.client_name || "Client";
+  const fps = 24;
+  const selectedProperties = sortedProperties.slice(0, PROPERTY_TARGET_COUNT);
   const scenes = [
-    { sceneId: "intro-a", type: "introGreeting", startFrame: 0, durationFrames: 48, onScreenText: `Hi ${clientName}.`, voiceover: null },
-    { sceneId: "intro-b", type: "introContext", startFrame: 48, durationFrames: 24, onScreenText: "Check out these properties!", voiceover: "Hi, I found a few properties that match what you are looking for." },
-    ...sortedProperties.map((property: Record<string, unknown>, index: number) => ({
-      sceneId: `property-${index + 1}`,
-      type: "propertyImage",
-      startFrame: 72 + index * 72,
-      durationFrames: 72,
-      propertyId: property.id,
-      onScreenText: property.headline,
-      voiceover: `${property.title}. ${property.description}`,
-    })),
-    { sceneId: "outro-pdf", type: "outroPdf", startFrame: 288, durationFrames: 36, onScreenText: "Check out the PDF for the full property details!", voiceover: "I have also prepared a PDF with the full details." },
-    { sceneId: "outro-close", type: "outroClosing", startFrame: 324, durationFrames: 36, onScreenText: "Call me.", voiceover: "Let me know which one stands out and I will take care of the next steps." },
+    { sceneId: "intro-a", type: "introGreeting", startFrame: 0, durationFrames: 4 * fps, onScreenText: `Hi ${clientName}.`, voiceover: "Hi, I have found you some great properties that match what you are looking for." },
+    { sceneId: "intro-b", type: "introContext", startFrame: 4 * fps, durationFrames: 6 * fps, onScreenText: "Check out these properties!", voiceover: "If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look." },
+    ...selectedProperties.flatMap((property: Record<string, unknown>, index: number) => {
+      const sectionStart = (10 + index * 8) * fps;
+      const imageIds = Array.isArray(property.images)
+        ? (property.images as Array<Record<string, unknown>>).slice(0, PROPERTY_IMAGES_PER_OPTION).map((image) => image.id ?? null)
+        : [];
+      return [
+        { sceneId: `property-${index + 1}-number`, type: "propertyNumber", startFrame: sectionStart, durationFrames: 1 * fps, propertyId: property.id, onScreenText: String(index + 1), voiceover: null },
+        { sceneId: `property-${index + 1}-image-1`, type: "propertyImage", startFrame: sectionStart + 1 * fps, durationFrames: 56, propertyId: property.id, imageId: imageIds[0], onScreenText: property.headline, voiceover: `${property.title}. ${property.description}` },
+        { sceneId: `property-${index + 1}-image-2`, type: "propertyImage", startFrame: sectionStart + 80, durationFrames: 56, propertyId: property.id, imageId: imageIds[1], onScreenText: property.headline, voiceover: null },
+        { sceneId: `property-${index + 1}-image-3`, type: "propertyImage", startFrame: sectionStart + 136, durationFrames: 56, propertyId: property.id, imageId: imageIds[2], onScreenText: property.price_label, voiceover: null },
+      ];
+    }),
+    { sceneId: "outro-pdf", type: "outroPdf", startFrame: 50 * fps, durationFrames: 4 * fps, onScreenText: "Check out the PDF for the full property details!", voiceover: "I have also sent you a PDF with the full details of all the properties shown here." },
+    { sceneId: "outro-close", type: "outroClosing", startFrame: 54 * fps, durationFrames: 6 * fps, onScreenText: "Call me.", voiceover: "Let me know which one stands out to you, and I will take care of the next steps for you." },
   ];
   const voiceoverScript = {
-    intro: "Hi, I found a few properties that match what you are looking for.",
-    properties: sortedProperties.map((property: Record<string, unknown>) => ({
+    intro: "Hi, I have found you some great properties that match what you are looking for. If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look.",
+    properties: selectedProperties.map((property: Record<string, unknown>, index: number) => ({
       propertyId: property.id,
-      voiceover: `${property.title}. ${property.headline}`,
+      voiceover: `${index === 0 ? "First" : index === 1 ? "Second" : index === 2 ? "Option three" : index === 3 ? "Property four" : "And finally"}, ${property.description || property.headline || property.title}.`,
     })),
-    outroPdf: "I have also prepared a PDF with the full details.",
-    outroClosing: "Let me know which one stands out and I will take care of the next steps.",
+    outroPdf: "I have also sent you a PDF with the full details of all the properties shown here.",
+    outroClosing: "Let me know which one stands out to you, and I will take care of the next steps for you.",
   };
   const plan = {
-    durationSeconds: 15,
-    fps: 24,
+    durationSeconds: 60,
+    fps,
     format: "vertical",
     resolution: { width: 720, height: 1280 },
     scenes,
@@ -550,9 +614,9 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       script: scenes.map((scene) => scene.voiceover).filter(Boolean).join("\n\n"),
       video_plan_json: plan,
       voiceover_script_json: voiceoverScript,
-      input_json: { clientName, properties: sortedProperties },
-      duration_seconds: 15,
-      fps: 24,
+      input_json: { clientName, properties: selectedProperties },
+      duration_seconds: 60,
+      fps,
       format: "vertical",
       status: "processing",
       completed_at: null,
@@ -623,20 +687,133 @@ function escapePdfText(value: string) {
   return value.replace(/[\\()]/g, "\\$&").replace(/\r?\n/g, " ");
 }
 
-function buildSimplePdf(title: string, lines: string[]) {
-  const contentLines = [`BT /F1 22 Tf 50 770 Td (${escapePdfText(title)}) Tj`, "/F1 11 Tf 0 -34 Td"];
-  for (const line of lines.slice(0, 34)) {
-    contentLines.push(`(${escapePdfText(line).slice(0, 110)}) Tj 0 -18 Td`);
+function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
+  const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+    if (lines.length === maxLines) break;
   }
-  contentLines.push("ET");
-  const stream = contentLines.join("\n");
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+function pdfText(value: unknown, x: number, y: number, size: number, options: { font?: "F1" | "F2"; color?: string } = {}) {
+  const font = options.font || "F1";
+  const color = options.color || "0 0 0";
+  return `${color} rg BT /${font} ${size} Tf ${x} ${y} Td (${escapePdfText(String(value || ""))}) Tj ET`;
+}
+
+function pdfTextBlock(lines: string[], x: number, y: number, size: number, leading = 18, options: { font?: "F1" | "F2"; color?: string } = {}) {
+  return lines.map((line, index) => pdfText(line, x, y - index * leading, size, options)).join("\n");
+}
+
+function imageRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((image) => {
+      if (!image || typeof image !== "object") return null;
+      const url = (image as Record<string, unknown>).url;
+      return typeof url === "string" && url.trim() ? url.trim() : null;
+    })
+    .filter((url): url is string => Boolean(url))
+    .slice(0, PROPERTY_IMAGES_PER_OPTION);
+}
+
+function buildPdfCover(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
+  const intro = [
+    "A curated shortlist prepared from the captured client brief.",
+    "Client-facing details only. Internal source trace is kept out of this report.",
   ];
+  return [
+    "0.95 0.95 0.94 rg 0 0 612 792 re f",
+    "1 1 1 rg 42 58 528 676 re f",
+    "0 0 0 rg 58 704 20 20 re f",
+    pdfText("propshorts", 90, 708, 18, { font: "F2" }),
+    pdfText("RECOMMENDATION REPORT", 58, 638, 12, { font: "F2", color: "0.55 0.55 0.55" }),
+    pdfTextBlock(wrapPdfText(title, 18, 3), 58, 580, 46, 50, { font: "F2" }),
+    pdfText(`Prepared for ${clientName}`, 58, 392, 18, { color: "0.38 0.38 0.38" }),
+    pdfTextBlock(intro, 58, 350, 13, 18, { color: "0.35 0.35 0.35" }),
+    "0 0 0 rg 58 238 496 1 re f",
+    pdfText(`${properties.length} selected properties`, 58, 204, 18, { font: "F2" }),
+    pdfText("PDF + PropShort video package", 58, 174, 13, { color: "0.35 0.35 0.35" }),
+    "0 0 0 rg 58 86 496 8 re f",
+  ].join("\n");
+}
+
+function buildPdfPropertyPage(property: Record<string, unknown>, index: number) {
+  const title = String(property.title || `Property ${index + 1}`);
+  const location = [property.area, property.city].filter(Boolean).join(", ") || "Location on request";
+  const metricLine = [
+    property.price_label,
+    typeof property.bedrooms === "number" ? `${property.bedrooms} bed` : null,
+    property.size_label || (typeof property.sqft === "number" ? `${property.sqft} sqft` : null),
+  ].filter(Boolean).join(" · ") || "Details on request";
+  const highlights = Array.isArray(property.highlights)
+    ? property.highlights.filter((item): item is string => typeof item === "string").slice(0, 4)
+    : [];
+  const images = imageRefs(property.images);
+  const imageLines = images.length > 0
+    ? images.map((url, imageIndex) => `Image ${imageIndex + 1}: ${url}`)
+    : ["Image references unavailable for this listing."];
+
+  return [
+    "0.95 0.95 0.94 rg 0 0 612 792 re f",
+    "1 1 1 rg 42 44 528 704 re f",
+    pdfText(`PROPERTY ${index + 1}`, 58, 704, 11, { font: "F2", color: "0.55 0.55 0.55" }),
+    pdfTextBlock(wrapPdfText(title, 24, 2), 58, 658, 30, 34, { font: "F2" }),
+    pdfText(location, 58, 586, 14, { color: "0.38 0.38 0.38" }),
+    "0 0 0 rg 58 548 340 46 re f",
+    pdfText(metricLine, 76, 564, 13, { font: "F2", color: "1 1 1" }),
+    "0.96 0.96 0.96 rg 58 392 496 112 re f",
+    pdfText("Why this fits", 76, 474, 11, { font: "F2", color: "0.55 0.55 0.55" }),
+    pdfTextBlock(wrapPdfText(property.headline || property.description || "A strong fit for the captured brief.", 56, 3), 76, 444, 17, 22, { font: "F2" }),
+    pdfText("Highlights", 58, 344, 11, { font: "F2", color: "0.55 0.55 0.55" }),
+    ...highlights.map((highlight, highlightIndex) => [
+      "0 0 0 rg",
+      `64 ${314 - highlightIndex * 28} 7 7 re f`,
+      pdfText(highlight, 84, 310 - highlightIndex * 28, 13, { color: "0.24 0.24 0.24" }),
+    ].join("\n")),
+    pdfText("Image references for video/PDF handoff", 58, 170, 10, { font: "F2", color: "0.55 0.55 0.55" }),
+    pdfTextBlock(imageLines.flatMap((line) => wrapPdfText(line, 74, 2)).slice(0, 6), 58, 146, 8, 11, { color: "0.24 0.24 0.24" }),
+    "0 0 0 rg 58 72 496 8 re f",
+    pdfText("propshorts", 474, 92, 10, { font: "F2" }),
+  ].join("\n");
+}
+
+function buildDesignedPdf(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
+  const pageStreams = [
+    buildPdfCover(title, clientName, properties),
+    ...properties.map((property, index) => buildPdfPropertyPage(property, index)),
+  ];
+  const pageCount = pageStreams.length;
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${3 + index} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+  ];
+
+  const contentStart = 3 + pageCount;
+  for (let index = 0; index < pageCount; index += 1) {
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${contentStart + pageCount} 0 R /F2 ${contentStart + pageCount + 1} 0 R >> >> /Contents ${contentStart + index} 0 R >>`);
+  }
+
+  for (const stream of pageStreams) {
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+
+  objects.push(
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+  );
+
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -660,7 +837,7 @@ function buildSimplePdf(title: string, lines: string[]) {
 export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow) {
   const { data: properties, error } = await supabase
     .from("property_recommendations")
-    .select("title,area,city,price_label,headline,highlights,sort_order")
+    .select("title,area,city,price_label,bedrooms,sqft,size_label,headline,description,highlights,images,sort_order")
     .eq("run_id", run.id);
   if (error || !properties?.length) throw error ?? new Error("NO_PROPERTIES_FOR_PDF");
 
@@ -671,15 +848,8 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
   });
   const clientName = requirement.client_name || "Client";
   const title = `PropShorts Recommendations for ${clientName}`;
-  const lines = sortedProperties.flatMap((property: Record<string, unknown>, index: number) => [
-    `${index + 1}. ${property.title ?? "Recommended property"}`,
-    `Area: ${[property.area, property.city].filter(Boolean).join(", ") || "Not captured"}`,
-    `Price: ${property.price_label ?? "On request"}`,
-    `Why it fits: ${property.headline ?? "Matches the captured brief"}`,
-    `Highlights: ${Array.isArray(property.highlights) ? property.highlights.join(", ") : "Broker-reviewed option"}`,
-    "",
-  ]);
-  const pdfUrl = buildSimplePdf(title, lines);
+  const pdfProperties = sortedProperties.slice(0, PROPERTY_TARGET_COUNT) as Array<Record<string, unknown>>;
+  const pdfUrl = buildDesignedPdf(title, clientName, pdfProperties);
 
   const { data, error: insertError } = await supabase
     .from("generated_pdfs")
@@ -687,8 +857,8 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
       user_id: run.user_id,
       run_id: run.id,
       pdf_url: pdfUrl,
-      page_count: 1,
-      input_json: { title, clientName, properties: sortedProperties },
+      page_count: pdfProperties.length + 1,
+      input_json: { title, clientName, properties: pdfProperties },
       status: "completed",
       completed_at: new Date().toISOString(),
     })
