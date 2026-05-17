@@ -17,7 +17,9 @@ export default function AuthLayout({
     <div className="min-h-screen bg-white px-4 py-6 text-black sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-48px)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[1fr_460px]">
         <section className="hidden min-h-[620px] flex-col justify-between rounded-[28px] bg-[#f3f3f3] p-10 lg:flex">
-          <PropShortsLogo width={170} className="h-auto w-[170px]" />
+          <div className="inline-flex w-fit items-center rounded-[22px] bg-white p-5 shadow-sm ring-1 ring-black/[0.04]">
+            <PropShortsLogo width={170} className="h-auto w-[170px]" />
+          </div>
 
           <div>
             <p className="text-[13px] font-semibold uppercase tracking-[0.32em] text-black/35">
@@ -48,7 +50,9 @@ export default function AuthLayout({
 
         <section className="mx-auto w-full max-w-[460px]">
           <div className="mb-8 flex justify-center lg:hidden">
-            <PropShortsLogo width={150} className="h-auto w-[150px]" />
+            <div className="rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-black/[0.04]">
+              <PropShortsLogo width={150} className="h-auto w-[150px]" />
+            </div>
           </div>
           {children}
         </section>
