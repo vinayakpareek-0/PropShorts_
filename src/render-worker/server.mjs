@@ -1,11 +1,11 @@
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import ffmpegPath from "ffmpeg-static";
+import sharp from "sharp";
 import WebSocket from "ws";
 
 const port = Number(process.env.PORT || 3001);
@@ -73,20 +73,6 @@ function compact(values) {
   return values.filter((value) => typeof value === "string" && value.trim().length > 0);
 }
 
-function quoteFilterValue(value) {
-  return `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-}
-
-function fontFile() {
-  const candidates = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/Library/Fonts/Arial.ttf",
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) || "";
-}
-
 function runFfmpeg(args, videoId) {
   if (!ffmpegPath) throw new Error("FFmpeg binary is not available");
 
@@ -118,82 +104,139 @@ function runFfmpeg(args, videoId) {
   });
 }
 
-async function makeTextFile(videoId, name, value) {
-  const filePath = path.join(tmpdir(), `propshort-${videoId}-${name}.txt`);
-  await writeFile(filePath, value, "utf8");
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function wrapText(value, maxChars = 28, maxLines = 4) {
+  const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+    if (lines.length === maxLines) break;
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+
+  if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
+    lines[maxLines - 1] = fit(lines[maxLines - 1], Math.max(8, maxChars - 1));
+  }
+  return lines.length > 0 ? lines : [""];
+}
+
+function textBlock(lines, { x, y, size, weight = 500, color = "#080808", lineHeight = 1.22, letterSpacing = 0 }) {
+  return lines.map((line, index) => (
+    `<text x="${x}" y="${y + index * size * lineHeight}" fill="${color}" font-family="Arial, Helvetica, sans-serif" font-size="${size}" font-weight="${weight}" letter-spacing="${letterSpacing}">${escapeXml(line)}</text>`
+  )).join("");
+}
+
+function baseSvg(content) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d489ff"/>
+      <stop offset="0.54" stop-color="#8ecae6"/>
+      <stop offset="1" stop-color="#c8cc7c"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="1280" fill="url(#bg)"/>
+  <rect x="38" y="38" width="644" height="1204" rx="44" fill="rgba(255,255,255,0.78)"/>
+  <circle cx="96" cy="92" r="24" fill="#080808"/>
+  <text x="136" y="102" fill="#555" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" letter-spacing="6">PROPSHORTS</text>
+  ${content}
+  <rect x="72" y="1160" width="576" height="18" rx="9" fill="rgba(0,0,0,0.12)"/>
+  <rect x="72" y="1160" width="576" height="18" rx="9" fill="#2da7df" opacity="0.82"/>
+</svg>`;
+}
+
+function introSlide(title, clientName) {
+  return baseSvg(`
+    ${textBlock([`Hi ${fit(clientName, 28)}.`], { x: 72, y: 228, size: 38, weight: 700, color: "#555" })}
+    ${textBlock(wrapText(fit(title, 64), 18, 4), { x: 72, y: 322, size: 62, weight: 900, lineHeight: 1.02 })}
+    ${textBlock(["I found three properties that", "match your brief."], { x: 72, y: 610, size: 30, color: "#555", lineHeight: 1.26 })}
+  `);
+}
+
+function propertySlide(property, index) {
+  const details = compact([property.area, property.city, property.price_label]).join(" - ") || "Details available in the PDF report";
+  const highlights = Array.isArray(property.highlights) ? property.highlights.slice(0, 3).join("  |  ") : "";
+  return baseSvg(`
+    <rect x="70" y="210" width="580" height="650" rx="34" fill="rgba(255,255,255,0.88)"/>
+    <text x="104" y="270" fill="#8e64d9" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" letter-spacing="5">PROPERTY ${index + 1}</text>
+    ${textBlock(wrapText(property.title || `Property ${index + 1}`, 18, 3), { x: 104, y: 360, size: 48, weight: 900, lineHeight: 1.03 })}
+    ${textBlock(wrapText(details, 36, 2), { x: 104, y: 512, size: 25, color: "#555", lineHeight: 1.24 })}
+    ${textBlock(wrapText(property.headline || property.description || "A strong match for the brief.", 25, 4), { x: 104, y: 630, size: 32, weight: 750, lineHeight: 1.16 })}
+    ${textBlock(wrapText(highlights || "See full report for complete details.", 38, 2), { x: 104, y: 798, size: 22, color: "#555", lineHeight: 1.22 })}
+  `);
+}
+
+function outroSlide(script) {
+  return baseSvg(`
+    ${textBlock(["PDF report", "is ready."], { x: 72, y: 390, size: 58, weight: 900, lineHeight: 1.04 })}
+    ${textBlock(wrapText(script || "Let me know which one stands out and I will take care of the next steps.", 34, 4), { x: 72, y: 570, size: 27, color: "#555", lineHeight: 1.28 })}
+  `);
+}
+
+async function writeSlide(videoId, index, svg) {
+  const filePath = path.join(tmpdir(), `propshort-${videoId}-slide-${index}.png`);
+  await sharp(Buffer.from(svg)).png().toFile(filePath);
   return filePath;
 }
 
-async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientName, script, properties }) {
-  const font = fontFile();
-  const textFiles = [];
-  const text = async (name, value) => {
-    const file = await makeTextFile(videoId, name, value);
-    textFiles.push(file);
-    return quoteFilterValue(file);
-  };
+function concatFilePath(value) {
+  return String(value).replace(/'/g, "'\\''");
+}
 
+async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientName, script, properties }) {
   const propertyLines = properties.slice(0, 3);
   while (propertyLines.length < 3) {
-    propertyLines.push({ title: "Property recommendation", area: null, city: null, price_label: null, headline: "A strong match for the brief.", highlights: [] });
+    propertyLines.push({
+      title: "Property recommendation",
+      area: null,
+      city: null,
+      price_label: null,
+      headline: "A strong match for the brief.",
+      highlights: [],
+    });
   }
 
-  const draw = ({ file, size, color = "black", x, y, enable }) => {
-    const options = [
-      font ? `fontfile=${quoteFilterValue(font)}` : null,
-      `textfile=${file}`,
-      `fontcolor=${color}`,
-      `fontsize=${size}`,
-      `x=${x}`,
-      `y=${y}`,
-      "line_spacing=12",
-      `enable=${quoteFilterValue(enable)}`,
-    ].filter(Boolean);
-    return `drawtext=${options.join(":")}`;
-  };
-  const box = ({ x, y, w, h, color = "white@0.82", enable }) =>
-    `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}:t=fill:enable=${quoteFilterValue(enable)}`;
-
-  const filters = [
-    "drawbox=x=38:y=38:w=644:h=1204:color=white@0.78:t=fill",
-    await draw({ file: await text("brand", "PROPSHORTS"), size: 24, color: "0x555555", x: 72, y: 74, enable: "between(t,0,15)" }),
-    await draw({ file: await text("intro", `Hi ${fit(clientName, 28)}.`), size: 38, color: "0x555555", x: 72, y: 186, enable: "between(t,0,3)" }),
-    await draw({ file: await text("title", fit(title, 48)), size: 58, x: 72, y: 250, enable: "between(t,0,3)" }),
-    await draw({ file: await text("intro_subtitle", "I found three properties that match your brief."), size: 28, color: "0x555555", x: 72, y: 420, enable: "between(t,0,3)" }),
+  const slideFiles = [
+    await writeSlide(videoId, 0, introSlide(title, clientName)),
+    await writeSlide(videoId, 1, propertySlide(propertyLines[0], 0)),
+    await writeSlide(videoId, 2, propertySlide(propertyLines[1], 1)),
+    await writeSlide(videoId, 3, propertySlide(propertyLines[2], 2)),
+    await writeSlide(videoId, 4, outroSlide(script)),
   ];
-
-  for (let index = 0; index < 3; index += 1) {
-    const property = propertyLines[index];
-    const start = 3 + index * 3;
-    const end = start + 3;
-    const details = compact([property.area, property.city, property.price_label]).join(" - ") || "Details available in the PDF report";
-    const highlights = Array.isArray(property.highlights) ? property.highlights.slice(0, 3).join("  |  ") : "";
-    filters.push(
-      box({ x: 70, y: 220, w: 580, h: 610, enable: `between(t,${start},${end})` }),
-      await draw({ file: await text(`p${index + 1}_label`, `PROPERTY ${index + 1}`), size: 22, color: "0x8e64d9", x: 104, y: 260, enable: `between(t,${start},${end})` }),
-      await draw({ file: await text(`p${index + 1}_title`, fit(property.title || `Property ${index + 1}`, 42)), size: 48, x: 104, y: 330, enable: `between(t,${start},${end})` }),
-      await draw({ file: await text(`p${index + 1}_details`, fit(details, 54)), size: 25, color: "0x555555", x: 104, y: 450, enable: `between(t,${start},${end})` }),
-      await draw({ file: await text(`p${index + 1}_headline`, fit(property.headline || property.description || "A strong match for the brief.", 64)), size: 31, x: 104, y: 535, enable: `between(t,${start},${end})` }),
-      await draw({ file: await text(`p${index + 1}_highlights`, fit(highlights || "See full report for complete details.", 70)), size: 22, color: "0x555555", x: 104, y: 690, enable: `between(t,${start},${end})` }),
-    );
-  }
-
-  filters.push(
-    await draw({ file: await text("outro", "PDF report is ready."), size: 54, x: 72, y: 380, enable: "between(t,12,15)" }),
-    await draw({ file: await text("script", fit(script || "Let me know which one stands out and I will take care of the next steps.", 82)), size: 26, color: "0x555555", x: 72, y: 480, enable: "between(t,12,15)" }),
-    "drawbox=x=72:y=1160:w=576:h=18:color=black@0.12:t=fill",
-    "drawbox=x=72:y=1160:w=576:h=18:color=0x2da7df@0.82:t=fill",
-  );
+  const concatPath = path.join(tmpdir(), `propshort-${videoId}-concat.txt`);
+  const concatBody = slideFiles
+    .map((file) => `file '${concatFilePath(file)}'\nduration 3`)
+    .join("\n")
+    .concat(`\nfile '${concatFilePath(slideFiles[slideFiles.length - 1])}'\n`);
 
   try {
+    await writeFile(concatPath, concatBody, "utf8");
     const args = [
       "-y",
       "-f",
-      "lavfi",
+      "concat",
+      "-safe",
+      "0",
       "-i",
-      "color=c=0xf6f6f3:s=720x1280:d=15:r=24",
+      concatPath,
       "-vf",
-      filters.join(","),
+      "format=yuv420p,scale=720:1280",
       "-c:v",
       "libx264",
       "-pix_fmt",
@@ -207,7 +250,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientNam
     console.log(`Starting FFmpeg render for video ${videoId}`);
     await runFfmpeg(args, videoId);
   } finally {
-    await Promise.all(textFiles.map((file) => rm(file, { force: true })));
+    await Promise.all([...slideFiles, concatPath].map((file) => rm(file, { force: true })));
   }
 }
 
