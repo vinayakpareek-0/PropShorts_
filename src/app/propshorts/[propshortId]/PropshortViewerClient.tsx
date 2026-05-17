@@ -5,10 +5,12 @@ import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
 import {
   briefFromRequirement,
+  copyText,
   fetchPackageByVideoId,
-  type GeneratedPackageRow,
+  publicShareUrl,
   refCode,
   shortDate,
+  type GeneratedPackageRow,
 } from "@/lib/propshorts/clientData";
 
 interface PropshortViewerClientProps {
@@ -21,10 +23,27 @@ function propertyCount(input: unknown) {
   return Array.isArray(properties) ? properties.length : 0;
 }
 
+function previewProperties(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return [];
+  const properties = (input as { properties?: unknown }).properties;
+  if (!Array.isArray(properties)) return [];
+
+  return properties.slice(0, 3).map((property, index) => {
+    const record = property && typeof property === "object" ? (property as Record<string, unknown>) : {};
+    return {
+      id: typeof record.id === "string" ? record.id : `property-${index}`,
+      title: typeof record.title === "string" ? record.title : `Property ${index + 1}`,
+      area: [record.area, record.city].filter((value): value is string => typeof value === "string" && value.length > 0).join(", "),
+      price: typeof record.price_label === "string" ? record.price_label : "",
+    };
+  });
+}
+
 export default function PropshortViewerClient({ propshortId }: PropshortViewerClientProps) {
   const [pkg, setPkg] = useState<GeneratedPackageRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [shared, setShared] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +72,15 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
   const video = pkg?.generated_videos;
   const clientName = pkg?.client_requirements?.client_name || "Client";
   const title = pkg?.package_title || `PropShort for ${clientName}`;
-  const previewUrl = video?.video_url || "";
+  const properties = previewProperties(video?.input_json);
+
+  async function handleShare() {
+    if (!pkg?.share_slug) return;
+
+    await copyText(publicShareUrl(pkg.share_slug));
+    setShared(true);
+    setTimeout(() => setShared(false), 2200);
+  }
 
   return (
     <AppLayout>
@@ -83,20 +110,43 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
         ) : pkg ? (
           <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
             <section className="rounded-3xl bg-black p-5 text-white">
-              <div className="flex aspect-video min-h-[360px] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c]">
-                {previewUrl ? (
-                  // The MVP Edge Function generates a visual Remotion-plan preview poster.
-                  <img src={previewUrl} alt={title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="px-8 text-center">
-                    <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-black text-white shadow-sm">
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-10 w-10">
+              <div className="relative flex aspect-video min-h-[360px] overflow-hidden rounded-2xl bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c] p-8 text-black">
+                <div className="absolute inset-4 rounded-[20px] bg-white/70" />
+                <div className="relative z-10 flex w-full flex-col justify-between">
+                  <div>
+                    <p className="text-[12px] font-bold uppercase tracking-[0.32em] text-black/45">PropShorts</p>
+                    <h3 className="mt-5 max-w-2xl text-[36px] font-black leading-tight tracking-[-0.02em]">
+                      {title}
+                    </h3>
+                    <p className="mt-2 text-[16px] font-medium text-black/55">Generated Remotion plan preview</p>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {properties.length > 0 ? (
+                      properties.map((property, index) => (
+                        <div key={property.id} className="rounded-2xl bg-white/70 px-4 py-3 shadow-sm">
+                          <p className="text-[15px] font-bold text-black">{index + 1}. {property.title}</p>
+                          <p className="mt-0.5 text-[12px] text-black/55">
+                            {[property.area, property.price].filter(Boolean).join(" · ") || "Property recommendation"}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl bg-white/70 px-4 py-3 text-[14px] font-medium text-black/55">
+                        Video plan saved. Property scene data is unavailable.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black text-white shadow-sm">
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-7 w-7">
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     </div>
-                    <p className="mt-5 text-[15px] text-black/70">Video plan generated. No preview URL saved.</p>
+                    <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-black/45">Ready to render</p>
                   </div>
-                )}
+                </div>
               </div>
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -137,6 +187,15 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                   >
                     Open Package
                   </Link>
+                  {pkg.share_slug ? (
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      className="rounded-xl bg-[#c8cc7c] px-5 py-3 text-center text-[14px] font-semibold text-black"
+                    >
+                      {shared ? "Public Link Copied" : "Share Public Link"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

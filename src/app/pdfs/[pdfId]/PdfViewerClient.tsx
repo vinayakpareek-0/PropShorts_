@@ -5,10 +5,12 @@ import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
 import {
   briefFromRequirement,
+  copyText,
   fetchPackageByPdfId,
-  type GeneratedPackageRow,
+  publicShareUrl,
   refCode,
   shortDate,
+  type GeneratedPackageRow,
 } from "@/lib/propshorts/clientData";
 
 interface PdfViewerClientProps {
@@ -19,6 +21,7 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
   const [pkg, setPkg] = useState<GeneratedPackageRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [shared, setShared] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +50,14 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
   const pdfUrl = pkg?.generated_pdfs?.pdf_url || "";
   const clientName = pkg?.client_requirements?.client_name || "Client";
   const title = pkg?.package_title || `PropShorts report for ${clientName}`;
+
+  async function handleShare() {
+    if (!pkg?.share_slug) return;
+
+    await copyText(publicShareUrl(pkg.share_slug));
+    setShared(true);
+    setTimeout(() => setShared(false), 2200);
+  }
 
   return (
     <AppLayout>
@@ -107,6 +118,15 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
                   >
                     Download PDF
                   </a>
+                ) : null}
+                {pkg.share_slug ? (
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="mt-3 block w-full rounded-xl bg-[#c8cc7c] px-5 py-3 text-center text-[14px] font-semibold text-black"
+                  >
+                    {shared ? "Public Link Copied" : "Share Public Link"}
+                  </button>
                 ) : null}
               </div>
 

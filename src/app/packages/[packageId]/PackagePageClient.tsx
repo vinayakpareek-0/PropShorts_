@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
+import { copyText, publicShareUrl } from "@/lib/propshorts/clientData";
 import { supabase } from "@/lib/supabase/client";
 import type { Database, Json } from "@/lib/supabase/database.types";
 
@@ -87,9 +88,13 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
   const propshortId = pkg?.generated_videos?.id || pkg?.video_id || "";
   const pdfId = pkg?.generated_pdfs?.id || pkg?.pdf_id || "";
 
-  function handleShare() {
+  async function handleShare() {
+    if (!pkg?.share_slug) return;
+
+    const url = publicShareUrl(pkg.share_slug);
+    await copyText(url);
     setShared(true);
-    setTimeout(() => setShared(false), 2000);
+    setTimeout(() => setShared(false), 2200);
   }
 
   return (
@@ -179,11 +184,20 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
         <footer className="mx-auto flex w-full max-w-[500px] flex-col items-center gap-5 pb-14 pt-8">
           <button
             onClick={handleShare}
-            disabled={!pkg}
+            disabled={!pkg?.share_slug}
             className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
           >
-            {shared ? "Link Copied!" : "Share"}
+            {shared ? "Public Link Copied!" : "Share Public Link"}
           </button>
+          {pkg?.share_slug ? (
+            <Link
+              href={`/share/${pkg.share_slug}`}
+              target="_blank"
+              className="text-[14px] font-medium text-black/45 underline underline-offset-2 transition-opacity hover:opacity-70"
+            >
+              Open public page
+            </Link>
+          ) : null}
           <Link
             href="/dashboard"
             className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"

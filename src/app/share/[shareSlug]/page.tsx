@@ -17,6 +17,21 @@ function highlights(value: PropertyRecommendationRow["highlights"]) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function videoProperties(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return [];
+  const properties = (input as { properties?: unknown }).properties;
+  if (!Array.isArray(properties)) return [];
+
+  return properties.slice(0, 3).map((property, index) => {
+    const record = property && typeof property === "object" ? (property as Record<string, unknown>) : {};
+    return {
+      id: typeof record.id === "string" ? record.id : `property-${index}`,
+      title: typeof record.title === "string" ? record.title : `Property ${index + 1}`,
+      area: [record.area, record.city].filter((value): value is string => typeof value === "string" && value.length > 0).join(", "),
+    };
+  });
+}
+
 export default function SharePage({ params }: SharePageProps) {
   const [shareSlug, setShareSlug] = useState("");
   const [pkg, setPkg] = useState<GeneratedPackageRow | null>(null);
@@ -128,6 +143,40 @@ export default function SharePage({ params }: SharePageProps) {
                 </div>
               )}
             </div>
+
+            {pkg.generated_videos ? (
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-gray-900">PropShort Video Preview</h2>
+                <div className="overflow-hidden rounded-xl bg-black p-4 text-white shadow-sm">
+                  <div className="relative min-h-[360px] overflow-hidden rounded-lg bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c] p-6 text-black">
+                    <div className="absolute inset-3 rounded-lg bg-white/70" />
+                    <div className="relative z-10 flex min-h-[312px] flex-col justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-black/45">PropShorts</p>
+                        <h3 className="mt-4 text-3xl font-black leading-tight">{pkg.package_title || "Property video preview"}</h3>
+                        <p className="mt-2 text-sm font-medium text-black/55">Generated Remotion plan preview</p>
+                      </div>
+                      <div className="grid gap-2">
+                        {videoProperties(pkg.generated_videos.input_json).map((property, index) => (
+                          <div key={property.id} className="rounded-lg bg-white/70 px-3 py-2">
+                            <p className="text-sm font-bold">{index + 1}. {property.title}</p>
+                            <p className="text-xs text-black/55">{property.area || "Property recommendation"}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white">
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-6 w-6">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/45">Preview ready</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {pkg.generated_pdfs?.pdf_url ? (
               <a
