@@ -13,12 +13,9 @@ const rootDir = path.resolve(__dirname, "../..");
 const entryPoint = path.join(rootDir, "src/remotion/index.ts");
 const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
-const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 240000);
+const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 120000);
 
 let bundledServeUrl;
-const renderQueue = [];
-const activeVideoIds = new Set();
-let isProcessingQueue = false;
 
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -62,7 +59,9 @@ function propertiesFromInput(input) {
 
 async function getServeUrl() {
   if (!bundledServeUrl) {
+    console.log("Bundling Remotion project");
     bundledServeUrl = await bundle({ entryPoint, webpackOverride: (config) => config });
+    console.log("Bundled Remotion project");
   }
   return bundledServeUrl;
 }
@@ -111,9 +110,12 @@ async function renderVideo(videoId, accessToken) {
   let lastLoggedProgress = -1;
 
   try {
+    console.log(`Preparing Remotion render for video ${videoId}`);
+    const serveUrl = await getServeUrl();
+    console.log(`Starting Remotion render for video ${videoId}`);
     await renderMedia({
       composition: "PropertyShort",
-      serveUrl: await getServeUrl(),
+      serveUrl,
       codec: "h264",
       outputLocation,
       concurrency: 1,
@@ -143,6 +145,7 @@ async function renderVideo(videoId, accessToken) {
         gl: "angle",
       },
     });
+    console.log(`Finished Remotion render for video ${videoId}`);
 
     const bytes = await readFile(outputLocation);
     const objectPath = `${video.user_id}/${video.id}.mp4`;
@@ -178,37 +181,6 @@ async function renderVideo(videoId, accessToken) {
   }
 }
 
-function enqueueRender(videoId, accessToken) {
-  if (activeVideoIds.has(videoId)) return false;
-  activeVideoIds.add(videoId);
-  renderQueue.push({ videoId, accessToken });
-  void drainRenderQueue();
-  return true;
-}
-
-async function drainRenderQueue() {
-  if (isProcessingQueue) return;
-  isProcessingQueue = true;
-
-  while (renderQueue.length > 0) {
-    const job = renderQueue.shift();
-    if (!job) continue;
-
-    try {
-      console.log(`Starting render for video ${job.videoId}`);
-      await renderVideo(job.videoId, job.accessToken);
-      console.log(`Completed render for video ${job.videoId}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.stack || error.message : String(error);
-      console.error(`Render failed for video ${job.videoId}: ${message}`);
-    } finally {
-      activeVideoIds.delete(job.videoId);
-    }
-  }
-
-  isProcessingQueue = false;
-}
-
 const server = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
@@ -236,12 +208,13 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const queued = enqueueRender(videoId, accessToken);
-    json(res, 202, {
+    console.log(`Received render request for video ${videoId}`);
+    const videoUrl = await renderVideo(videoId, accessToken);
+    json(res, 200, {
       success: true,
       video_id: videoId,
-      status: queued ? "queued" : "already_queued",
-      queue_depth: renderQueue.length,
+      status: "completed",
+      video_url: videoUrl,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
