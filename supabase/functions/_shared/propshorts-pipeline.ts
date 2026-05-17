@@ -7,6 +7,7 @@ export const corsHeaders = {
 };
 
 type SupabaseClient = ReturnType<typeof createClient>;
+type AuthorizedSupabaseClient = SupabaseClient & { __authorization?: string };
 
 interface RequirementRow {
   id: string;
@@ -75,9 +76,11 @@ export function getSupabaseForRequest(req: Request) {
     throw new Error("UNAUTHORIZED");
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authorization } },
-  });
+  }) as AuthorizedSupabaseClient;
+  client.__authorization = authorization;
+  return client;
 }
 
 export async function requireUser(supabase: SupabaseClient) {
@@ -535,7 +538,6 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
     clientSafeConfirmed: true,
     renderer: "remotion-plan",
   };
-  const videoUrl = buildVideoPreviewImage(clientName, sortedProperties);
 
   const { data, error: insertError } = await supabase
     .from("generated_videos")
@@ -543,8 +545,8 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       user_id: run.user_id,
       run_id: run.id,
       provider: "remotion",
-      provider_job_id: `remotion-plan-${run.id}`,
-      video_url: videoUrl,
+      provider_job_id: `remotion-render-${run.id}`,
+      video_url: null,
       script: scenes.map((scene) => scene.voiceover).filter(Boolean).join("\n\n"),
       video_plan_json: plan,
       voiceover_script_json: voiceoverScript,
@@ -552,58 +554,69 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       duration_seconds: 60,
       fps: 30,
       format: "vertical",
-      status: "completed",
-      completed_at: new Date().toISOString(),
+      status: "processing",
+      completed_at: null,
     })
     .select("id")
     .single();
 
   if (insertError || !data) throw insertError ?? new Error("VIDEO_INSERT_FAILED");
+
+  await enqueueVideoRender(supabase, data.id);
   return data as { id: string };
 }
 
-function escapeSvgText(value: unknown) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+async function enqueueVideoRender(supabase: SupabaseClient, videoId: string) {
+  const renderUrl = Deno.env.get("REMOTION_RENDER_WEBHOOK_URL");
+  const renderSecret = Deno.env.get("REMOTION_RENDER_SECRET");
+  const authorization = (supabase as AuthorizedSupabaseClient).__authorization;
 
-function buildVideoPreviewImage(clientName: string, properties: Array<Record<string, unknown>>) {
-  const title = `PropShort for ${clientName}`;
-  const propertyLines = properties.slice(0, 3).map((property, index) => {
-    const name = escapeSvgText(property.title || `Property ${index + 1}`);
-    const area = escapeSvgText([property.area, property.city].filter(Boolean).join(", "));
-    return `<text x="92" y="${620 + index * 92}" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" fill="#111">${index + 1}. ${name}</text><text x="92" y="${662 + index * 92}" font-family="Inter, Arial, sans-serif" font-size="24" fill="#555">${area}</text>`;
-  }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
-    <defs>
-      <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-        <stop stop-color="#d489ff" offset="0"/>
-        <stop stop-color="#8ecae6" offset="0.52"/>
-        <stop stop-color="#c8cc7c" offset="1"/>
-      </linearGradient>
-    </defs>
-    <rect width="1080" height="1920" fill="#f6f6f3"/>
-    <rect x="52" y="52" width="976" height="1816" rx="56" fill="url(#bg)" opacity="0.9"/>
-    <rect x="70" y="70" width="940" height="1780" rx="44" fill="rgba(255,255,255,0.82)"/>
-    <text x="92" y="220" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="8" fill="#555">PROPSHORTS</text>
-    <text x="92" y="360" font-family="Inter, Arial, sans-serif" font-size="76" font-weight="800" fill="#080808">${escapeSvgText(title)}</text>
-    <text x="92" y="440" font-family="Inter, Arial, sans-serif" font-size="32" fill="#333">Generated video plan preview</text>
-    <rect x="92" y="520" width="896" height="2" fill="#111" opacity="0.12"/>
-    ${propertyLines}
-    <circle cx="540" cy="1380" r="116" fill="#111"/>
-    <polygon points="512,1322 512,1438 608,1380" fill="#fff"/>
-    <text x="540" y="1610" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" fill="#111">Remotion plan ready</text>
-    <text x="540" y="1662" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="26" fill="#555">Use this record for final MP4 rendering.</text>
-  </svg>`;
-  const bytes = new TextEncoder().encode(svg);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
+  if (!renderUrl || !renderSecret || !authorization) {
+    const missing = [
+      !renderUrl ? "REMOTION_RENDER_WEBHOOK_URL" : null,
+      !renderSecret ? "REMOTION_RENDER_SECRET" : null,
+      !authorization ? "Authorization" : null,
+    ].filter(Boolean).join(", ");
+
+    await supabase
+      .from("generated_videos")
+      .update({
+        status: "failed",
+        error_message: `Video renderer is not configured: ${missing}`,
+      })
+      .eq("id", videoId);
+    return;
+  }
+
+  const renderRequest = fetch(renderUrl, {
+    method: "POST",
+    headers: {
+      "Authorization": authorization,
+      "Content-Type": "application/json",
+      "x-render-secret": renderSecret,
+    },
+    body: JSON.stringify({ video_id: videoId }),
+  }).then(async (response) => {
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`RENDER_WORKER_FAILED:${response.status}:${body.slice(0, 400)}`);
+    }
+  }).catch(async (error) => {
+    await supabase
+      .from("generated_videos")
+      .update({
+        status: "failed",
+        error_message: getErrorMessage(error),
+      })
+      .eq("id", videoId);
   });
-  return `data:image/svg+xml;base64,${btoa(binary)}`;
+
+  const edgeRuntime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(renderRequest);
+  } else {
+    await renderRequest;
+  }
 }
 
 function escapePdfText(value: string) {

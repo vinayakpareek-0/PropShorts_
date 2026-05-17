@@ -146,8 +146,17 @@ export default function SharePage({ params }: SharePageProps) {
 
             {pkg.generated_videos ? (
               <div>
-                <h2 className="mb-4 text-lg font-semibold text-gray-900">PropShort Video Preview</h2>
+                <h2 className="mb-4 text-lg font-semibold text-gray-900">PropShort Video</h2>
                 <div className="overflow-hidden rounded-xl bg-black p-4 text-white shadow-sm">
+                  {pkg.generated_videos.video_url?.endsWith(".mp4") ? (
+                    <video
+                      className="mx-auto aspect-[9/16] max-h-[680px] w-full rounded-lg bg-black object-contain"
+                      src={pkg.generated_videos.video_url}
+                      controls
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
                   <div className="relative min-h-[360px] overflow-hidden rounded-lg bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c] p-6 text-black">
                     <div className="absolute inset-3 rounded-lg bg-white/70" />
                     <div className="relative z-10 flex min-h-[312px] flex-col justify-between">
@@ -174,6 +183,7 @@ export default function SharePage({ params }: SharePageProps) {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             ) : null}

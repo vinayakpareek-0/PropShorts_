@@ -6,6 +6,7 @@
     "prebuild": "node scripts/assert-no-dev-server.mjs",
     "dev": "next dev",
     "dev:clean": "rm -rf .next && next dev",
+    "render-worker": "node src/render-worker/server.mjs",
     "build:clean": "rm -rf .next && npm run build",
     "build": "next build",
     "start": "next start",
@@ -14,12 +15,16 @@
     "check": "npm run lint && npm run typecheck && npm run build:clean"
   },
   "dependencies": {
+    "@remotion/bundler": "^4.0.462",
+    "@remotion/renderer": "^4.0.462",
     "@supabase/supabase-js": "^2.105.4",
     "next": "^15.3.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.462"
   },
   "devDependencies": {
+    "@remotion/cli": "^4.0.462",
     "@tailwindcss/postcss": "^4.1.6",
     "@types/node": "^22.15.17",
     "@types/react": "^19.1.4",

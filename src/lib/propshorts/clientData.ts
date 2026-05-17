@@ -50,6 +50,7 @@ export interface GeneratedPackageRow {
     video_url: string | null;
     script: string | null;
     status: string;
+    error_message: string | null;
     created_at: string;
     video_plan_json: Json | null;
     voiceover_script_json: Json | null;
@@ -139,6 +140,7 @@ export async function fetchGeneratedPackages() {
         video_url,
         script,
         status,
+        error_message,
         created_at,
         video_plan_json,
         voiceover_script_json,
@@ -188,6 +190,7 @@ export async function fetchGeneratedPackageByShareSlug(shareSlug: string) {
         video_url,
         script,
         status,
+        error_message,
         created_at,
         video_plan_json,
         voiceover_script_json,

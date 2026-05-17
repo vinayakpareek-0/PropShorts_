@@ -73,6 +73,7 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
   const clientName = pkg?.client_requirements?.client_name || "Client";
   const title = pkg?.package_title || `PropShort for ${clientName}`;
   const properties = previewProperties(video?.input_json);
+  const hasRenderedVideo = Boolean(video?.video_url && video.video_url.endsWith(".mp4"));
 
   async function handleShare() {
     if (!pkg?.share_slug) return;
@@ -110,6 +111,15 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
         ) : pkg ? (
           <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
             <section className="rounded-3xl bg-black p-5 text-white">
+              {hasRenderedVideo ? (
+                <video
+                  className="aspect-[9/16] max-h-[720px] w-full rounded-2xl bg-black object-contain"
+                  src={video?.video_url || ""}
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
               <div className="relative flex aspect-video min-h-[360px] overflow-hidden rounded-2xl bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c] p-8 text-black">
                 <div className="absolute inset-4 rounded-[20px] bg-white/70" />
                 <div className="relative z-10 flex w-full flex-col justify-between">
@@ -148,6 +158,7 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                   </div>
                 </div>
               </div>
+              )}
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-white/40">
@@ -155,8 +166,13 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                   </p>
                   <h2 className="mt-2 text-[24px] font-semibold text-white">{title}</h2>
                   <p className="mt-1 text-[14px] text-white/55">
-                    {propertyCount(video?.input_json)} properties · Remotion plan ready
+                    {propertyCount(video?.input_json)} properties · {hasRenderedVideo ? "MP4 rendered" : video?.status === "failed" ? "Render failed" : "Rendering MP4"}
                   </p>
+                  {video?.status === "failed" ? (
+                    <p className="mt-2 text-[13px] text-red-200">
+                      {video.error_message || "The render worker could not finish this video."}
+                    </p>
+                  ) : null}
                 </div>
                 <p className="text-[13px] text-white/45">{video?.status || "generated"}</p>
               </div>
