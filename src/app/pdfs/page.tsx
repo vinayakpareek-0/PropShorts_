@@ -1,51 +1,60 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
 import PdfListItem from "@/components/lists/PdfListItem";
-
-const MOCK_ITEMS = [
-  {
-    id: "pdf-001",
-    packageId: "pkg-001",
-    clientName: "John Smith",
-    description: "3BHK Apartment - Bandra, Mumbai",
-    refCode: "PKG-001",
-    date: "May 1",
-  },
-  {
-    id: "pdf-002",
-    packageId: "pkg-002",
-    clientName: "Priya Nair",
-    description: "2BHK Apartment - Andheri, Mumbai",
-    refCode: "PKG-002",
-    date: "May 5",
-  },
-  {
-    id: "pdf-003",
-    packageId: "pkg-003",
-    clientName: "Arjun Kapoor",
-    description: "Villa - Lonavala",
-    refCode: "PKG-003",
-    date: "May 12",
-  },
-];
+import {
+  briefFromRequirement,
+  fetchGeneratedPackages,
+  type GeneratedPackageRow,
+  refCode,
+  shortDate,
+} from "@/lib/propshorts/clientData";
 
 export default function PdfsPage() {
   const [query, setQuery] = useState("");
+  const [packages, setPackages] = useState<GeneratedPackageRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPdfs() {
+      try {
+        const rows = await fetchGeneratedPackages();
+        if (!cancelled) setPackages(rows.filter((item) => item.generated_pdfs || item.pdf_id));
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load generated PDFs.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadPdfs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return MOCK_ITEMS;
+    if (!needle) return packages;
 
-    return MOCK_ITEMS.filter((item) =>
-      [item.clientName, item.description, item.refCode, item.date]
+    return packages.filter((item) =>
+      [
+        item.client_requirements?.client_name,
+        briefFromRequirement(item.client_requirements),
+        refCode(item.id),
+        shortDate(item.created_at),
+      ]
         .join(" ")
         .toLowerCase()
         .includes(needle),
     );
-  }, [query]);
+  }, [packages, query]);
 
   return (
     <SidebarShell>
@@ -56,7 +65,7 @@ export default function PdfsPage() {
               My PDFs
             </h1>
             <p className="mt-1.5 text-[14px] text-black/40">
-              {MOCK_ITEMS.length}/30 PDFs Made This Month
+              {loading ? "Loading PDFs..." : `${packages.length}/30 PDFs Made This Month`}
             </p>
           </div>
 
@@ -81,7 +90,13 @@ export default function PdfsPage() {
             />
           </label>
 
-          {MOCK_ITEMS.length === 0 ? (
+          {error ? (
+            <div className="w-full rounded-2xl bg-red-50 py-10 text-center text-red-600">{error}</div>
+          ) : loading ? (
+            <div className="w-full rounded-2xl bg-[#f3f3f3] py-16 text-center">
+              <p className="text-[17px] font-normal text-black/40">Loading generated PDFs...</p>
+            </div>
+          ) : packages.length === 0 ? (
             <div className="w-full rounded-2xl bg-[#f3f3f3] py-16 text-center">
               <p className="text-[17px] font-normal text-black/40">No PDFs yet.</p>
               <Link
@@ -105,7 +120,15 @@ export default function PdfsPage() {
           ) : (
             <div className="flex w-full flex-col gap-3">
               {filteredItems.map((item) => (
-                <PdfListItem key={item.id} {...item} />
+                <PdfListItem
+                  key={item.id}
+                  id={item.generated_pdfs?.id || item.pdf_id || item.id}
+                  packageId={item.id}
+                  clientName={item.client_requirements?.client_name || "Client"}
+                  description={briefFromRequirement(item.client_requirements)}
+                  refCode={refCode(item.id)}
+                  date={shortDate(item.created_at)}
+                />
               ))}
             </div>
           )}

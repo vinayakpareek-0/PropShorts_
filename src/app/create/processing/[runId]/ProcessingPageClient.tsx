@@ -218,7 +218,7 @@ export default function ProcessingPageClient() {
               aria-valuemax={100}
             >
               <div
-                className={`h-full rounded-full transition-all duration-500 ${error ? "bg-red-500" : ""}`}
+              className={`h-full rounded-lg transition-all duration-500 ${error ? "bg-red-500" : ""}`}
                 style={{
                   width: `${Math.max(8, progress)}%`,
                   background: error

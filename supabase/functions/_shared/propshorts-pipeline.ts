@@ -535,6 +535,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
     clientSafeConfirmed: true,
     renderer: "remotion-plan",
   };
+  const videoUrl = buildVideoPreviewImage(clientName, sortedProperties);
 
   const { data, error: insertError } = await supabase
     .from("generated_videos")
@@ -543,7 +544,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       run_id: run.id,
       provider: "remotion",
       provider_job_id: `remotion-plan-${run.id}`,
-      video_url: null,
+      video_url: videoUrl,
       script: scenes.map((scene) => scene.voiceover).filter(Boolean).join("\n\n"),
       video_plan_json: plan,
       voiceover_script_json: voiceoverScript,
@@ -559,6 +560,50 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
 
   if (insertError || !data) throw insertError ?? new Error("VIDEO_INSERT_FAILED");
   return data as { id: string };
+}
+
+function escapeSvgText(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildVideoPreviewImage(clientName: string, properties: Array<Record<string, unknown>>) {
+  const title = `PropShort for ${clientName}`;
+  const propertyLines = properties.slice(0, 3).map((property, index) => {
+    const name = escapeSvgText(property.title || `Property ${index + 1}`);
+    const area = escapeSvgText([property.area, property.city].filter(Boolean).join(", "));
+    return `<text x="92" y="${620 + index * 92}" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" fill="#111">${index + 1}. ${name}</text><text x="92" y="${662 + index * 92}" font-family="Inter, Arial, sans-serif" font-size="24" fill="#555">${area}</text>`;
+  }).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+    <defs>
+      <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+        <stop stop-color="#d489ff" offset="0"/>
+        <stop stop-color="#8ecae6" offset="0.52"/>
+        <stop stop-color="#c8cc7c" offset="1"/>
+      </linearGradient>
+    </defs>
+    <rect width="1080" height="1920" fill="#f6f6f3"/>
+    <rect x="52" y="52" width="976" height="1816" rx="56" fill="url(#bg)" opacity="0.9"/>
+    <rect x="70" y="70" width="940" height="1780" rx="44" fill="rgba(255,255,255,0.82)"/>
+    <text x="92" y="220" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="8" fill="#555">PROPSHORTS</text>
+    <text x="92" y="360" font-family="Inter, Arial, sans-serif" font-size="76" font-weight="800" fill="#080808">${escapeSvgText(title)}</text>
+    <text x="92" y="440" font-family="Inter, Arial, sans-serif" font-size="32" fill="#333">Generated video plan preview</text>
+    <rect x="92" y="520" width="896" height="2" fill="#111" opacity="0.12"/>
+    ${propertyLines}
+    <circle cx="540" cy="1380" r="116" fill="#111"/>
+    <polygon points="512,1322 512,1438 608,1380" fill="#fff"/>
+    <text x="540" y="1610" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" fill="#111">Remotion plan ready</text>
+    <text x="540" y="1662" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="26" fill="#555">Use this record for final MP4 rendering.</text>
+  </svg>`;
+  const bytes = new TextEncoder().encode(svg);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return `data:image/svg+xml;base64,${btoa(binary)}`;
 }
 
 function escapePdfText(value: string) {
