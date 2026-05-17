@@ -42,16 +42,6 @@ interface ParseRequirementResponse {
   };
 }
 
-interface StartRecommendationRunResponse {
-  success: boolean;
-  run_id?: string;
-  package_id?: string;
-  error?: {
-    code: string;
-    message: string;
-  };
-}
-
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
@@ -99,22 +89,6 @@ function formatBudget(refined: RefinedRequirement) {
 function formatValue(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") return "Not captured";
   return String(value);
-}
-
-async function getFunctionErrorMessage(error: unknown, fallback: string) {
-  if (!error || typeof error !== "object") return fallback;
-
-  const maybeContext = (error as { context?: unknown }).context;
-  if (maybeContext instanceof Response) {
-    try {
-      const body = await maybeContext.clone().json() as { error?: { message?: string }; message?: string };
-      return body.error?.message || body.message || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  return error instanceof Error ? error.message : fallback;
 }
 
 export default function CreateConfirmPage() {
@@ -207,29 +181,7 @@ export default function CreateConfirmPage() {
 
     setGenerating(true);
     setError("");
-
-    const { data, error: invokeError } = await supabase.functions.invoke<StartRecommendationRunResponse>(
-      "start-recommendation-run",
-      {
-        body: {
-          requirement_id: requirement.id,
-        },
-      },
-    );
-
-    setGenerating(false);
-
-    if (invokeError) {
-      setError(await getFunctionErrorMessage(invokeError, "Could not generate this package."));
-      return;
-    }
-
-    if (!data?.success || !data.package_id) {
-      setError(data?.error?.message || "Could not generate this package.");
-      return;
-    }
-
-    router.push(`/packages/${data.package_id}`);
+    router.push(`/create/processing/new?requirementId=${encodeURIComponent(requirement.id)}`);
   }
 
   return (

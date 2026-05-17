@@ -3,8 +3,8 @@ import {
   getErrorMessage,
   getSupabaseForRequest,
   jsonResponse,
+  loadRequirement,
   requireUser,
-  runFullPipeline,
 } from "../_shared/propshorts-pipeline.ts";
 
 interface Body {
@@ -26,8 +26,27 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: false, error: { code: "REQUIREMENT_ID_REQUIRED", message: "Requirement ID is required." } }, 400);
     }
 
-    const result = await runFullPipeline(supabase, requirementId);
-    return jsonResponse({ success: true, status: "completed", ...result });
+    const requirement = await loadRequirement(supabase, requirementId);
+    const { data: run, error: runError } = await supabase
+      .from("recommendation_runs")
+      .insert({
+        user_id: requirement.user_id,
+        requirement_id: requirement.id,
+        status: "processing",
+      })
+      .select("id,status")
+      .single();
+
+    if (runError || !run) {
+      throw runError ?? new Error("RUN_INSERT_FAILED");
+    }
+
+    return jsonResponse({
+      success: true,
+      requirement_id: requirement.id,
+      run_id: run.id,
+      status: run.status,
+    });
   } catch (error) {
     const message = getErrorMessage(error);
     const status = message === "UNAUTHORIZED" ? 401 : message === "SERVER_CONFIG_ERROR" ? 500 : 500;
