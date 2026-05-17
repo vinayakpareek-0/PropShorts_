@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../..");
@@ -34,6 +35,7 @@ function getSupabase(accessToken) {
   return createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: WebSocket },
   });
 }
 
