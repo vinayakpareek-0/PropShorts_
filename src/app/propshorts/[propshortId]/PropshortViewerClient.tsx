@@ -12,6 +12,7 @@ import {
   shortDate,
   type GeneratedPackageRow,
 } from "@/lib/propshorts/clientData";
+import { supabase } from "@/lib/supabase/client";
 
 interface PropshortViewerClientProps {
   propshortId: string;
@@ -44,6 +45,8 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
+  const [renderingAgain, setRenderingAgain] = useState(false);
+  const [renderMessage, setRenderMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +84,34 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
     await copyText(publicShareUrl(pkg.share_slug));
     setShared(true);
     setTimeout(() => setShared(false), 2200);
+  }
+
+  async function handleRenderAgain() {
+    if (!video?.id || renderingAgain) return;
+
+    setRenderingAgain(true);
+    setRenderMessage("");
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke("rerender-property-video", {
+        body: { video_id: video.id },
+      });
+
+      if (invokeError) throw invokeError;
+      if (data && typeof data === "object" && "success" in data && !data.success) {
+        const message = data.error && typeof data.error === "object" && "message" in data.error
+          ? String(data.error.message)
+          : "Could not start the render.";
+        throw new Error(message);
+      }
+
+      setRenderMessage("Render started. This page will show the video when it finishes.");
+      const row = await fetchPackageByVideoId(propshortId);
+      setPkg(row);
+    } catch (rerenderError) {
+      setRenderMessage(rerenderError instanceof Error ? rerenderError.message : "Could not start the render.");
+    } finally {
+      setRenderingAgain(false);
+    }
   }
 
   return (
@@ -175,6 +206,19 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                   ) : null}
                 </div>
                 <p className="text-[13px] text-white/45">{video?.status || "generated"}</p>
+              </div>
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={handleRenderAgain}
+                  disabled={!video?.id || renderingAgain || video?.status === "processing"}
+                  className="rounded-xl bg-white px-5 py-3 text-[14px] font-semibold text-black transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {renderingAgain ? "Starting Render..." : video?.status === "processing" ? "Rendering..." : "Render Again"}
+                </button>
+                {renderMessage ? (
+                  <p className="text-[13px] text-white/55">{renderMessage}</p>
+                ) : null}
               </div>
             </section>
 

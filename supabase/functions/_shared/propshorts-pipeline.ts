@@ -566,7 +566,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
   return data as { id: string };
 }
 
-async function enqueueVideoRender(supabase: SupabaseClient, videoId: string) {
+export async function enqueueVideoRender(supabase: SupabaseClient, videoId: string) {
   const renderUrl = Deno.env.get("REMOTION_RENDER_WEBHOOK_URL");
   const renderSecret = Deno.env.get("REMOTION_RENDER_SECRET");
   const authorization = (supabase as AuthorizedSupabaseClient).__authorization;
