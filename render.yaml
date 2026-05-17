@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: propshorts-render-worker
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm run render-worker
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: SUPABASE_URL
+        value: https://propshorts.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_VIDEO_BUCKET
+        value: generated-videos
+      - key: RENDER_WORKER_SECRET
+        sync: false
