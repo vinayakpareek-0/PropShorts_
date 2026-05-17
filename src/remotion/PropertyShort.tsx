@@ -27,8 +27,8 @@ function fit(value: string, max = 72) {
 }
 
 function propertyForFrame(properties: PropertyShortProperty[], frame: number) {
-  if (frame < 300) return null;
-  const index = Math.min(properties.length - 1, Math.floor((frame - 300) / 360));
+  if (frame < 180) return null;
+  const index = Math.min(properties.length - 1, Math.floor((frame - 180) / 180));
   return properties[index] || null;
 }
 
@@ -36,13 +36,13 @@ export function PropertyShort({ title, clientName, script, properties }: Propert
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const activeProperty = propertyForFrame(properties, frame);
-  const introOpacity = interpolate(frame, [0, 45, 260, 310], [0, 1, 1, 0], {
+  const introOpacity = interpolate(frame, [0, 30, 150, 190], [0, 1, 1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const cardScale = spring({ frame: Math.max(0, frame - 300), fps, config: { damping: 18, stiffness: 90 } });
-  const progress = interpolate(frame, [0, 1800], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const outroOpacity = interpolate(frame, [1510, 1580], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const cardScale = spring({ frame: Math.max(0, frame - 180), fps, config: { damping: 18, stiffness: 90 } });
+  const progress = interpolate(frame, [0, 900], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const outroOpacity = interpolate(frame, [760, 820], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill style={{ background: "#f6f6f3", fontFamily: "Inter, Arial, sans-serif", color: "#080808" }}>

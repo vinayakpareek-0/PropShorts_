@@ -14,7 +14,7 @@ export function RemotionRoot() {
     <Composition
       id="PropertyShort"
       component={PropertyShort as unknown as ComponentType<Record<string, unknown>>}
-      durationInFrames={1800}
+      durationInFrames={900}
       fps={30}
       width={1080}
       height={1920}
