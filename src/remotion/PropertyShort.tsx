@@ -27,8 +27,8 @@ function fit(value: string, max = 72) {
 }
 
 function propertyForFrame(properties: PropertyShortProperty[], frame: number) {
-  if (frame < 180) return null;
-  const index = Math.min(properties.length - 1, Math.floor((frame - 180) / 180));
+  if (frame < 72) return null;
+  const index = Math.min(properties.length - 1, Math.floor((frame - 72) / 72));
   return properties[index] || null;
 }
 
@@ -36,13 +36,13 @@ export function PropertyShort({ title, clientName, script, properties }: Propert
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const activeProperty = propertyForFrame(properties, frame);
-  const introOpacity = interpolate(frame, [0, 30, 150, 190], [0, 1, 1, 0], {
+  const introOpacity = interpolate(frame, [0, 18, 58, 74], [0, 1, 1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const cardScale = spring({ frame: Math.max(0, frame - 180), fps, config: { damping: 18, stiffness: 90 } });
-  const progress = interpolate(frame, [0, 900], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const outroOpacity = interpolate(frame, [760, 820], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const cardScale = spring({ frame: Math.max(0, frame - 72), fps, config: { damping: 18, stiffness: 90 } });
+  const progress = interpolate(frame, [0, 360], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const outroOpacity = interpolate(frame, [300, 330], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill style={{ background: "#f6f6f3", fontFamily: "Inter, Arial, sans-serif", color: "#080808" }}>
@@ -73,12 +73,12 @@ export function PropertyShort({ title, clientName, script, properties }: Propert
               </div>
             </div>
 
-            <div style={{ marginTop: 74, opacity: introOpacity }}>
-              <div style={{ fontSize: 44, fontWeight: 700, color: "rgba(0,0,0,0.42)" }}>Hi {clientName}.</div>
-              <div style={{ marginTop: 28, fontSize: 104, lineHeight: 0.95, letterSpacing: 0, fontWeight: 900 }}>
+            <div style={{ marginTop: 52, opacity: introOpacity }}>
+              <div style={{ fontSize: 36, fontWeight: 700, color: "rgba(0,0,0,0.42)" }}>Hi {clientName}.</div>
+              <div style={{ marginTop: 22, fontSize: 76, lineHeight: 0.95, letterSpacing: 0, fontWeight: 900 }}>
                 {fit(title, 48)}
               </div>
-              <div style={{ marginTop: 32, fontSize: 38, lineHeight: 1.28, color: "rgba(0,0,0,0.56)" }}>
+              <div style={{ marginTop: 26, fontSize: 30, lineHeight: 1.28, color: "rgba(0,0,0,0.56)" }}>
                 I found a few properties that match what you are looking for.
               </div>
             </div>
@@ -89,26 +89,26 @@ export function PropertyShort({ title, clientName, script, properties }: Propert
               style={{
                 transform: `scale(${0.96 + cardScale * 0.04})`,
                 background: "#ffffff",
-                borderRadius: 42,
-                padding: 46,
+                borderRadius: 34,
+                padding: 34,
                 boxShadow: "0 24px 60px rgba(0,0,0,0.12)",
               }}
             >
-              <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 6, textTransform: "uppercase", color: "#8e64d9" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 5, textTransform: "uppercase", color: "#8e64d9" }}>
                 Recommended Property
               </div>
-              <div style={{ marginTop: 28, fontSize: 76, lineHeight: 0.98, fontWeight: 900 }}>
+              <div style={{ marginTop: 20, fontSize: 54, lineHeight: 0.98, fontWeight: 900 }}>
                 {fit(activeProperty.title || "Property recommendation", 54)}
               </div>
-              <div style={{ marginTop: 26, fontSize: 36, lineHeight: 1.25, color: "rgba(0,0,0,0.55)" }}>
+              <div style={{ marginTop: 18, fontSize: 26, lineHeight: 1.25, color: "rgba(0,0,0,0.55)" }}>
                 {compact([activeProperty.area, activeProperty.city, activeProperty.price_label]).join(" - ") || "Details available in the PDF report"}
               </div>
-              <div style={{ marginTop: 38, fontSize: 44, lineHeight: 1.18, fontWeight: 750 }}>
+              <div style={{ marginTop: 28, fontSize: 32, lineHeight: 1.18, fontWeight: 750 }}>
                 {fit(activeProperty.headline || activeProperty.description || "A strong match for the brief.", 88)}
               </div>
-              <div style={{ marginTop: 36, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ marginTop: 26, display: "flex", flexDirection: "column", gap: 12 }}>
                 {(activeProperty.highlights || []).slice(0, 4).map((highlight) => (
-                  <div key={highlight} style={{ borderRadius: 22, background: "#f3f3f0", padding: "18px 24px", fontSize: 31, fontWeight: 700 }}>
+                  <div key={highlight} style={{ borderRadius: 18, background: "#f3f3f0", padding: "14px 18px", fontSize: 23, fontWeight: 700 }}>
                     {fit(highlight, 54)}
                   </div>
                 ))}
@@ -117,8 +117,8 @@ export function PropertyShort({ title, clientName, script, properties }: Propert
           ) : null}
 
           <div style={{ opacity: outroOpacity }}>
-            <div style={{ fontSize: 72, lineHeight: 1.02, fontWeight: 900 }}>PDF report is ready.</div>
-            <div style={{ marginTop: 22, fontSize: 35, lineHeight: 1.28, color: "rgba(0,0,0,0.58)" }}>
+            <div style={{ fontSize: 54, lineHeight: 1.02, fontWeight: 900 }}>PDF report is ready.</div>
+            <div style={{ marginTop: 18, fontSize: 27, lineHeight: 1.28, color: "rgba(0,0,0,0.58)" }}>
               {script ? fit(script, 126) : "Let me know which one stands out and I will take care of the next steps."}
             </div>
           </div>

@@ -40,6 +40,8 @@ Deno.serve(async (req) => {
         error_message: null,
         video_url: null,
         completed_at: null,
+        duration_seconds: 15,
+        fps: 24,
         retry_count: 0,
         provider_job_id: `remotion-rerender-${Date.now()}`,
       })

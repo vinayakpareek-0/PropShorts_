@@ -40,6 +40,11 @@ function previewProperties(input: unknown) {
   });
 }
 
+function isStaleProcessing(updatedAt?: string | null) {
+  if (!updatedAt) return false;
+  return Date.now() - new Date(updatedAt).getTime() > 8 * 60 * 1000;
+}
+
 export default function PropshortViewerClient({ propshortId }: PropshortViewerClientProps) {
   const [pkg, setPkg] = useState<GeneratedPackageRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +82,14 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
   const title = pkg?.package_title || `PropShort for ${clientName}`;
   const properties = previewProperties(video?.input_json);
   const hasRenderedVideo = Boolean(video?.video_url && video.video_url.endsWith(".mp4"));
+  const staleProcessing = video?.status === "processing" && isStaleProcessing(video.updated_at);
+  const artifactStatus = hasRenderedVideo
+    ? "MP4 rendered"
+    : video?.status === "failed"
+      ? "Render failed"
+      : staleProcessing
+        ? "Render timed out"
+        : "Rendering MP4";
 
   async function handleShare() {
     if (!pkg?.share_slug) return;
@@ -197,11 +210,16 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                   </p>
                   <h2 className="mt-2 text-[24px] font-semibold text-white">{title}</h2>
                   <p className="mt-1 text-[14px] text-white/55">
-                    {propertyCount(video?.input_json)} properties · {hasRenderedVideo ? "MP4 rendered" : video?.status === "failed" ? "Render failed" : "Rendering MP4"}
+                    {propertyCount(video?.input_json)} properties · {artifactStatus}
                   </p>
                   {video?.status === "failed" ? (
                     <p className="mt-2 text-[13px] text-red-200">
                       {video.error_message || "The render worker could not finish this video."}
+                    </p>
+                  ) : null}
+                  {staleProcessing ? (
+                    <p className="mt-2 text-[13px] text-amber-100">
+                      This render has been processing for too long. Start it again to use the lighter renderer.
                     </p>
                   ) : null}
                 </div>
@@ -211,10 +229,10 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
                 <button
                   type="button"
                   onClick={handleRenderAgain}
-                  disabled={!video?.id || renderingAgain || video?.status === "processing"}
+                  disabled={!video?.id || renderingAgain || (video?.status === "processing" && !staleProcessing)}
                   className="rounded-xl bg-white px-5 py-3 text-[14px] font-semibold text-black transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  {renderingAgain ? "Starting Render..." : video?.status === "processing" ? "Rendering..." : "Render Again"}
+                  {renderingAgain ? "Starting Render..." : video?.status === "processing" && !staleProcessing ? "Rendering..." : "Render Again"}
                 </button>
                 {renderMessage ? (
                   <p className="text-[13px] text-white/55">{renderMessage}</p>

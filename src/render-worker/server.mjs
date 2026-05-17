@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { renderMedia } from "@remotion/renderer";
+import { makeCancelSignal, renderMedia } from "@remotion/renderer";
 import { createClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 
@@ -13,6 +13,7 @@ const rootDir = path.resolve(__dirname, "../..");
 const entryPoint = path.join(rootDir, "src/remotion/index.ts");
 const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
+const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 240000);
 
 let bundledServeUrl;
 const renderQueue = [];
@@ -79,6 +80,7 @@ async function markFailed(supabase, videoId, error) {
 }
 
 async function renderVideo(videoId, accessToken) {
+  const startedAt = Date.now();
   const supabase = getSupabase(accessToken);
   const { data: video, error } = await supabase
     .from("generated_videos")
@@ -101,6 +103,12 @@ async function renderVideo(videoId, accessToken) {
   const input = video.input_json && typeof video.input_json === "object" ? video.input_json : {};
   const clientName = typeof input.clientName === "string" ? input.clientName : "Client";
   const outputLocation = path.join(tmpdir(), `propshort-${videoId}.mp4`);
+  const { cancelSignal, cancel } = makeCancelSignal();
+  const timeout = setTimeout(() => {
+    console.error(`Render timed out for video ${videoId} after ${renderTimeoutMs}ms`);
+    cancel();
+  }, renderTimeoutMs);
+  let lastLoggedProgress = -1;
 
   try {
     await renderMedia({
@@ -108,11 +116,28 @@ async function renderVideo(videoId, accessToken) {
       serveUrl: await getServeUrl(),
       codec: "h264",
       outputLocation,
+      concurrency: 1,
+      crf: 24,
+      disallowParallelEncoding: true,
+      imageFormat: "jpeg",
+      jpegQuality: 78,
+      muted: true,
+      timeoutInMilliseconds: 15000,
+      cancelSignal,
       inputProps: {
         title: `PropShort for ${clientName}`,
         clientName,
         script: video.script || "",
         properties: propertiesFromInput(input),
+      },
+      onProgress: ({ progress, renderedFrames, encodedFrames }) => {
+        const percent = Math.floor(progress * 100);
+        if (percent >= lastLoggedProgress + 10 || percent === 100) {
+          lastLoggedProgress = percent;
+          console.log(
+            `Render progress ${videoId}: ${percent}% (${renderedFrames ?? 0} rendered, ${encodedFrames ?? 0} encoded)`,
+          );
+        }
       },
       chromiumOptions: {
         gl: "angle",
@@ -142,11 +167,13 @@ async function renderVideo(videoId, accessToken) {
       .eq("id", video.id);
     if (updateError) throw updateError;
 
+    console.log(`Uploaded render for video ${videoId} in ${Math.round((Date.now() - startedAt) / 1000)}s`);
     return videoUrl;
   } catch (renderError) {
     await markFailed(supabase, videoId, renderError);
     throw renderError;
   } finally {
+    clearTimeout(timeout);
     await rm(outputLocation, { force: true });
   }
 }

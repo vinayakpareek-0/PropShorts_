@@ -14,10 +14,10 @@ export function RemotionRoot() {
     <Composition
       id="PropertyShort"
       component={PropertyShort as unknown as ComponentType<Record<string, unknown>>}
-      durationInFrames={900}
-      fps={30}
-      width={1080}
-      height={1920}
+      durationInFrames={360}
+      fps={24}
+      width={720}
+      height={1280}
       defaultProps={defaultProps}
     />
   );
