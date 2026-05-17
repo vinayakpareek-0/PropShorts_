@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     const run = await loadRun(supabase, runId);
     const requirement = await loadRequirement(supabase, run.requirement_id);
     const video = await generateVideoRecord(supabase, run, requirement);
-    return jsonResponse({ success: true, run_id: run.id, video_id: video.id, status: "completed" });
+    return jsonResponse({ success: true, run_id: run.id, video_id: video.id, status: "processing" });
   } catch (error) {
     const message = getErrorMessage(error);
     return jsonResponse({ success: false, error: { code: message, message } }, message === "UNAUTHORIZED" ? 401 : 500);
