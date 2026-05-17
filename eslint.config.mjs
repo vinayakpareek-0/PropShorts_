@@ -9,8 +9,34 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+const nextConfigs = compat.extends("next/core-web-vitals", "next/typescript").map((config) => ({
+  ...config,
+  settings: {
+    ...config.settings,
+    next: {
+      ...config.settings?.next,
+      rootDir: __dirname,
+    },
+  },
+}));
+
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    ignores: [
+      ".next/**",
+      "out/**",
+      "node_modules/**",
+      "coverage/**",
+      "build/**",
+      "public/**",
+      "design-inputs/**",
+      "supabase/.temp/**",
+      "next-env.d.ts",
+      "*.config.js",
+      "*.config.mjs",
+    ],
+  },
+  ...nextConfigs,
 ];
 
 export default eslintConfig;
