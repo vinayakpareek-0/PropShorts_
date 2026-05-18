@@ -16,7 +16,15 @@ const inputClass =
 export default function ProfilePage() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<BrokerProfileRow | null>(null);
-  const [values, setValues] = useState({ full_name: "", company_name: "", email: "", phone: "" });
+  const [values, setValues] = useState({
+    full_name: "",
+    company_name: "",
+    email: "",
+    phone: "",
+    profile_photo_url: "",
+    website_url: "",
+    calendar_url: "",
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,6 +43,9 @@ export default function ProfilePage() {
           company_name: row?.company_name || "",
           email: row?.email || user?.email || "",
           phone: row?.phone || "",
+          profile_photo_url: row?.profile_photo_url || "",
+          website_url: row?.website_url || "",
+          calendar_url: row?.calendar_url || "",
         });
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load profile.");
@@ -74,6 +85,9 @@ export default function ProfilePage() {
         company_name: saved.company_name || "",
         email: saved.email || user?.email || "",
         phone: saved.phone || "",
+        profile_photo_url: saved.profile_photo_url || "",
+        website_url: saved.website_url || "",
+        calendar_url: saved.calendar_url || "",
       });
       setMessage("Profile saved.");
     } catch (saveError) {
@@ -147,6 +161,36 @@ export default function ProfilePage() {
                     type="tel"
                     value={values.phone}
                     onChange={(event) => setValues((current) => ({ ...current, phone: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55">
+                  Profile photo URL
+                  <input
+                    type="url"
+                    value={values.profile_photo_url}
+                    placeholder="https://..."
+                    onChange={(event) => setValues((current) => ({ ...current, profile_photo_url: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55">
+                  Website URL
+                  <input
+                    type="url"
+                    value={values.website_url}
+                    placeholder="https://..."
+                    onChange={(event) => setValues((current) => ({ ...current, website_url: event.target.value }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="text-[13px] font-medium text-black/55 sm:col-span-2">
+                  Calendar booking URL
+                  <input
+                    type="url"
+                    value={values.calendar_url}
+                    placeholder="https://cal.com/your-link"
+                    onChange={(event) => setValues((current) => ({ ...current, calendar_url: event.target.value }))}
                     className={inputClass}
                   />
                 </label>

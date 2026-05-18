@@ -234,6 +234,9 @@ export async function saveBrokerProfile(values: {
   company_name: string;
   phone: string;
   email: string;
+  profile_photo_url: string;
+  website_url: string;
+  calendar_url: string;
 }) {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
@@ -249,6 +252,9 @@ export async function saveBrokerProfile(values: {
         company_name: values.company_name.trim() || null,
         phone: values.phone.trim() || null,
         email: values.email.trim() || user.email || null,
+        profile_photo_url: values.profile_photo_url.trim() || null,
+        website_url: values.website_url.trim() || null,
+        calendar_url: values.calendar_url.trim() || null,
         role: "broker",
       },
       { onConflict: "user_id" },

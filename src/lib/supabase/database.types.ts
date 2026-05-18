@@ -206,32 +206,41 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          calendar_url: string | null
           phone: string | null
+          profile_photo_url: string | null
           role: string
+          website_url: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          calendar_url?: string | null
           company_name?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
           id?: string
           phone?: string | null
+          profile_photo_url?: string | null
           role?: string
           updated_at?: string
           user_id: string
+          website_url?: string | null
         }
         Update: {
+          calendar_url?: string | null
           company_name?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
           id?: string
           phone?: string | null
+          profile_photo_url?: string | null
           role?: string
           updated_at?: string
           user_id?: string
+          website_url?: string | null
         }
         Relationships: []
       }

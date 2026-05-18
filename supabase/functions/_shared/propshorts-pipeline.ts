@@ -993,21 +993,46 @@ async function embedImageFromUrl(pdfDoc: PDFDocument, url: string) {
   return embedImage(pdfDoc, await fetchImageBytes(url));
 }
 
-function drawBrandFallback(page: ReturnType<PDFDocument["addPage"]>, boldFont: Awaited<ReturnType<PDFDocument["embedFont"]>>, x = 58, y = 714) {
-  page.drawRectangle({ x, y: y - 2, width: 18, height: 18, color: rgb(0, 0, 0) });
-  page.drawText("propshorts", { x: x + 28, y, size: 15, font: boldFont, color: rgb(0, 0, 0) });
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
+const PDF_GREEN = rgb(0.10, 0.36, 0.20);
+const PDF_LIGHT_GREEN = rgb(0.90, 0.96, 0.91);
+const PDF_GRAY = rgb(0.43, 0.43, 0.43);
+const PDF_BORDER = rgb(0.82, 0.84, 0.82);
+const PDF_SOFT = rgb(0.965, 0.965, 0.955);
+
+type PdfPage = ReturnType<PDFDocument["addPage"]>;
+type PdfFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
+type PdfFonts = { regular: PdfFont; bold: PdfFont };
+type BrokerPdfProfile = {
+  full_name?: string | null;
+  company_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  profile_photo_url?: string | null;
+  website_url?: string | null;
+  calendar_url?: string | null;
+};
+
+function drawBrand(page: PdfPage, logo: PDFImage | null, fonts: PdfFonts, x = 36, y = 790, width = 108) {
+  if (logo) {
+    page.drawImage(logo, { x, y: y - 22, width, height: width * 0.42 });
+    return;
+  }
+  page.drawCircle({ x: x + 12, y: y - 6, size: 12, color: rgb(0, 0, 0) });
+  page.drawText("propshorts", { x: x + 30, y: y - 15, size: 17, font: fonts.bold, color: rgb(0, 0, 0) });
 }
 
 function drawTextLines(
-  page: ReturnType<PDFDocument["addPage"]>,
+  page: PdfPage,
   lines: string[],
   x: number,
   y: number,
   size: number,
-  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  font: PdfFont,
   options: { color?: ReturnType<typeof rgb>; leading?: number } = {},
 ) {
-  const leading = options.leading ?? size * 1.22;
+  const leading = options.leading ?? size * 1.28;
   lines.forEach((line, index) => {
     page.drawText(pdfSafeText(line), {
       x,
@@ -1019,11 +1044,10 @@ function drawTextLines(
   });
 }
 
-function drawImageFrame(page: ReturnType<PDFDocument["addPage"]>, image: PDFImage | null, x: number, y: number, width: number, height: number, mode: "cover" | "contain" = "cover") {
-  page.drawRectangle({ x, y, width, height, color: rgb(0.95, 0.95, 0.94) });
+function drawImageFrame(page: PdfPage, image: PDFImage | null, x: number, y: number, width: number, height: number, mode: "cover" | "contain" = "cover") {
+  page.drawRectangle({ x, y, width, height, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.7 });
   if (!image) {
-    page.drawRectangle({ x: x + 14, y: y + 14, width: width - 28, height: height - 28, color: rgb(0.78, 0.80, 0.49) });
-    page.drawText("Photo unavailable", { x: x + 22, y: y + 22, size: 8, color: rgb(0.2, 0.2, 0.18) });
+    page.drawText("Image pending", { x: x + 18, y: y + height / 2 - 4, size: 9, color: PDF_GRAY });
     return;
   }
 
@@ -1045,133 +1069,346 @@ async function embedPropertyImageSet(pdfDoc: PDFDocument, property: Record<strin
   return Promise.all(urls.map((url) => embedImageFromUrl(pdfDoc, url)));
 }
 
-function drawPill(
-  page: ReturnType<PDFDocument["addPage"]>,
-  label: string,
-  value: unknown,
-  x: number,
-  y: number,
-  width: number,
-  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
-) {
-  page.drawRectangle({ x, y, width, height: 42, color: rgb(0.96, 0.96, 0.95) });
-  page.drawText(pdfSafeText(label).toUpperCase(), { x: x + 12, y: y + 25, size: 7, font: fonts.bold, color: rgb(0.58, 0.58, 0.55) });
-  page.drawText(pdfSafeText(value || "On request").slice(0, 24), { x: x + 12, y: y + 10, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
-}
-
-function propertyBriefLine(property: Record<string, unknown>) {
-  return [
-    property.property_type,
-    property.rent_or_buy && property.rent_or_buy !== "unknown" ? property.rent_or_buy : null,
-    property.area,
-    property.city,
-  ].filter(Boolean).map(pdfSafeText).join(" / ");
-}
-
-async function drawPdfCover(
-  pdfDoc: PDFDocument,
-  title: string,
-  clientName: string,
-  properties: Array<Record<string, unknown>>,
-  logo: PDFImage | null,
-  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
-) {
-  const page = pdfDoc.addPage([612, 792]);
-  const heroImage = await embedImageFromUrl(pdfDoc, imageRefs(properties[0]?.images)[0] || "");
-  const thumbnailImages = await Promise.all(properties.slice(1, 3).map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
-
-  page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
-  drawImageFrame(page, heroImage, 34, 324, 544, 426);
-  page.drawRectangle({ x: 54, y: 462, width: 360, height: 210, color: rgb(1, 1, 1) });
-  if (logo) page.drawImage(logo, { x: 72, y: 626, width: 88, height: 38 });
-  else drawBrandFallback(page, fonts.bold, 72, 640);
-
-  page.drawText("PROPERTY OPTIONS", { x: 72, y: 584, size: 10, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
-  drawTextLines(page, wrapPdfText(title, 20, 2), 72, 540, 34, fonts.bold, { leading: 36 });
-  page.drawText(pdfSafeText(`For ${clientName}`), { x: 72, y: 458, size: 15, font: fonts.regular, color: rgb(0.35, 0.35, 0.33) });
-
-  page.drawRectangle({ x: 34, y: 42, width: 544, height: 248, color: rgb(1, 1, 1) });
-  page.drawText("A concise shortlist of homes that match your requirement.", { x: 58, y: 250, size: 15, font: fonts.bold, color: rgb(0, 0, 0) });
-  drawTextLines(page, [
-    "Compare location, price, fit notes, and photos at a glance.",
-    "Choose the homes you want to inspect next.",
-  ], 58, 224, 11, fonts.regular, { color: rgb(0.35, 0.35, 0.33), leading: 17 });
-
-  const first = properties[0] || {};
-  drawPill(page, "Top match", first.title || "Option 1", 58, 148, 240, fonts);
-  drawPill(page, "Budget", first.price_label || "On request", 314, 148, 112, fonts);
-  drawPill(page, "Location", first.area || first.city || "On request", 442, 148, 112, fonts);
-
-  thumbnailImages.forEach((image, index) => {
-    drawImageFrame(page, image, 58 + index * 156, 74, 140, 54);
+function drawHeader(page: PdfPage, logo: PDFImage | null, fonts: PdfFonts, label: string, pageNumber: number) {
+  drawBrand(page, logo, fonts, 36, 800, 105);
+  page.drawText(`${label.toUpperCase()}  |  PAGE ${String(pageNumber).padStart(2, "0")}`, {
+    x: A4_WIDTH - 260,
+    y: 790,
+    size: 8.5,
+    font: fonts.bold,
+    color: rgb(0.2, 0.2, 0.2),
   });
-  page.drawRectangle({ x: 370, y: 74, width: 184, height: 54, color: rgb(0, 0, 0) });
-  page.drawText("propshorts", { x: 426, y: 94, size: 14, font: fonts.bold, color: rgb(1, 1, 1) });
 }
 
-function drawPdfPropertyPage(
-  pdfDoc: PDFDocument,
-  property: Record<string, unknown>,
-  propertyImages: Array<PDFImage | null>,
-  index: number,
-  logo: PDFImage | null,
-  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
-) {
-  const title = String(property.title || `Property ${index + 1}`);
-  const location = [property.area, property.city].filter(Boolean).join(", ") || "Location on request";
-  const highlights = Array.isArray(property.highlights)
-    ? property.highlights.filter((item): item is string => typeof item === "string").slice(0, 4)
+function drawFooter(page: PdfPage, logo: PDFImage | null, fonts: PdfFonts, pageNumber: number) {
+  page.drawLine({ start: { x: 36, y: 58 }, end: { x: A4_WIDTH - 36, y: 58 }, thickness: 0.7, color: PDF_BORDER });
+  drawBrand(page, logo, fonts, 36, 40, 78);
+  page.drawText("PROPERTY MATCH REPORT", { x: 235, y: 34, size: 8, font: fonts.bold, color: PDF_GRAY });
+  page.drawText(`Page ${String(pageNumber).padStart(2, "0")}`, { x: A4_WIDTH - 82, y: 34, size: 8, font: fonts.regular, color: PDF_GRAY });
+}
+
+function reportDate() {
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date());
+}
+
+function matchScore(index: number) {
+  return Math.max(85, 95 - index * 3);
+}
+
+function propertyTitle(property: Record<string, unknown>, index: number) {
+  return pdfSafeText(property.title || `Property ${index + 1}`);
+}
+
+function propertyLocation(property: Record<string, unknown>) {
+  return [property.area, property.city].filter(Boolean).map(pdfSafeText).join(", ");
+}
+
+function propertyHighlights(property: Record<string, unknown>, max = 4) {
+  return Array.isArray(property.highlights)
+    ? property.highlights.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, max)
     : [];
-
-  const page = pdfDoc.addPage([612, 792]);
-  page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
-  page.drawRectangle({ x: 34, y: 38, width: 544, height: 716, color: rgb(1, 1, 1) });
-  if (logo) page.drawImage(logo, { x: 50, y: 716, width: 72, height: 32 });
-  else drawBrandFallback(page, fonts.bold, 50, 730);
-
-  page.drawText(`OPTION ${index + 1}`, { x: 50, y: 674, size: 9, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
-  drawTextLines(page, wrapPdfText(title, 34, 2), 50, 640, 25, fonts.bold, { leading: 29 });
-  page.drawText(pdfSafeText(location), { x: 50, y: 582, size: 12, font: fonts.regular, color: rgb(0.38, 0.38, 0.36) });
-  page.drawRectangle({ x: 382, y: 590, width: 158, height: 38, color: rgb(0, 0, 0) });
-  page.drawText(pdfSafeText(property.price_label || "Price on request").slice(0, 25), { x: 396, y: 604, size: 12, font: fonts.bold, color: rgb(1, 1, 1) });
-
-  drawImageFrame(page, propertyImages[0] || null, 50, 334, 330, 220);
-  drawImageFrame(page, propertyImages[1] || null, 394, 444, 146, 110);
-  drawImageFrame(page, propertyImages[2] || null, 394, 334, 146, 96);
-
-  drawPill(page, "Beds", typeof property.bedrooms === "number" ? property.bedrooms : "Request", 50, 274, 104, fonts);
-  drawPill(page, "Baths", typeof property.bathrooms === "number" ? property.bathrooms : "Request", 166, 274, 104, fonts);
-  drawPill(page, "Size", property.size_label || (typeof property.sqft === "number" ? `${property.sqft} sqft` : "Request"), 282, 274, 118, fonts);
-  drawPill(page, "Type", property.property_type || "Home", 412, 274, 128, fonts);
-
-  page.drawText("Why it works", { x: 50, y: 232, size: 15, font: fonts.bold, color: rgb(0, 0, 0) });
-  drawTextLines(page, wrapPdfText(property.description || property.headline || "A strong fit for your requirement.", 76, 4), 50, 208, 10.5, fonts.regular, { color: rgb(0.23, 0.23, 0.22), leading: 15 });
-
-  page.drawText("Highlights", { x: 50, y: 132, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
-  highlights.forEach((highlight, highlightIndex) => {
-    const row = Math.floor(highlightIndex / 2);
-    const col = highlightIndex % 2;
-    const x = 50 + col * 250;
-    const y = 100 - row * 30;
-    page.drawRectangle({ x, y: y + 4, width: 8, height: 8, color: rgb(0.78, 0.80, 0.49) });
-    drawTextLines(page, wrapPdfText(highlight, 31, 1), x + 18, y, 10, fonts.bold, { color: rgb(0.12, 0.12, 0.11) });
-  });
-  page.drawText(pdfSafeText(propertyBriefLine(property)), { x: 50, y: 54, size: 8, font: fonts.regular, color: rgb(0.5, 0.5, 0.48) });
 }
 
-async function buildDesignedPdf(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
+function propertySpecs(property: Record<string, unknown>) {
+  return [
+    typeof property.bedrooms === "number" ? { label: "BEDROOMS", value: String(property.bedrooms) } : null,
+    typeof property.bathrooms === "number" ? { label: "BATHROOMS", value: String(property.bathrooms) } : null,
+    property.size_label || typeof property.sqft === "number" ? { label: typeof property.sqft === "number" ? "SQFT" : "SIZE", value: pdfSafeText(property.size_label || property.sqft) } : null,
+    property.property_type ? { label: "TYPE", value: pdfSafeText(property.property_type) } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
+}
+
+function summaryCriteria(requirement: RequirementRow) {
+  const inferred = inferRequirement(requirement);
+  return [
+    inferred.bedrooms ? `${inferred.bedrooms}+ Bedrooms` : null,
+    inferred.bathrooms ? `${inferred.bathrooms}+ Bathrooms` : null,
+    inferred.propertyType ? pdfSafeText(inferred.propertyType) : null,
+    inferred.budgetLabel || (inferred.budget ? `Up to ${inferred.currency} ${inferred.budget.toLocaleString("en-IN")}` : null),
+    inferred.location ? pdfSafeText(inferred.location) : null,
+    inferred.rentOrBuy !== "unknown" ? pdfSafeText(inferred.rentOrBuy) : null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 8);
+}
+
+function priceRange(properties: Array<Record<string, unknown>>) {
+  const prices = properties.map((property) => asFlexibleNumber(property.price)).filter((price): price is number => typeof price === "number");
+  if (prices.length === 0) return "On request";
+  const min = Math.min(...prices).toLocaleString("en-IN");
+  const max = Math.max(...prices).toLocaleString("en-IN");
+  return min === max ? `INR ${min}` : `INR ${min} - ${max}`;
+}
+
+function averageNumber(properties: Array<Record<string, unknown>>, key: string) {
+  const values = properties.map((property) => asFlexibleNumber(property[key])).filter((value): value is number => typeof value === "number");
+  if (!values.length) return "On request";
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Number.isInteger(avg) ? String(avg) : avg.toFixed(1);
+}
+
+function brokerName(broker: BrokerPdfProfile | null) {
+  return pdfSafeText(broker?.full_name || "Your Property Expert");
+}
+
+function brokerRole(broker: BrokerPdfProfile | null) {
+  return pdfSafeText(broker?.company_name || "Your Local Property Expert");
+}
+
+async function drawCoverPage(pdfDoc: PDFDocument, context: PdfContext) {
+  const { properties, clientName, broker, logo, fonts, reportId, brokerPhoto } = context;
+  const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  const heroImage = await embedImageFromUrl(pdfDoc, imageRefs(properties[0]?.images)[0] || "");
+
+  page.drawRectangle({ x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT, color: rgb(1, 1, 1) });
+  page.drawCircle({ x: A4_WIDTH - 70, y: A4_HEIGHT - 130, size: 124, color: rgb(0.94, 0.98, 0.93) });
+  page.drawCircle({ x: A4_WIDTH - 38, y: A4_HEIGHT - 94, size: 94, color: rgb(0.95, 0.91, 0.99) });
+  drawBrand(page, logo, fonts, 54, 790, 130);
+  drawTextLines(page, ["Property", "Match Report"], 54, 650, 53, fonts.regular, { leading: 56 });
+  page.drawLine({ start: { x: 56, y: 568 }, end: { x: 84, y: 568 }, thickness: 2.4, color: PDF_GREEN });
+  page.drawText("PREPARED FOR", { x: 54, y: 520, size: 9, font: fonts.bold, color: PDF_GRAY });
+  page.drawText(pdfSafeText(clientName), { x: 54, y: 482, size: 27, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(`Here are ${properties.length} hand-picked properties that match what you are looking for.`, 44, 2), 54, 448, 12.5, fonts.regular, { color: rgb(0.18, 0.18, 0.18), leading: 18 });
+  drawImageFrame(page, heroImage, 26, 215, A4_WIDTH - 52, 230);
+
+  page.drawRectangle({ x: 26, y: 90, width: A4_WIDTH - 52, height: 92, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  drawImageFrame(page, brokerPhoto, 50, 112, 70, 50);
+  page.drawText("SENT BY", { x: 140, y: 148, size: 8, font: fonts.bold, color: PDF_GRAY });
+  page.drawText(brokerName(broker), { x: 140, y: 126, size: 18, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText(brokerRole(broker), { x: 140, y: 108, size: 11, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
+  page.drawLine({ start: { x: 330, y: 110 }, end: { x: 330, y: 160 }, thickness: 0.7, color: PDF_BORDER });
+  const contacts = [broker?.phone, broker?.email, broker?.website_url].filter(Boolean).slice(0, 3);
+  contacts.forEach((item, index) => {
+    page.drawText(["CALL", "MAIL", "WEB"][index], { x: 360, y: 151 - index * 24, size: 7, font: fonts.bold, color: PDF_GREEN });
+    page.drawText(pdfSafeText(item), { x: 397, y: 151 - index * 24, size: 10, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
+  });
+  page.drawLine({ start: { x: 26, y: 70 }, end: { x: A4_WIDTH - 26, y: 70 }, thickness: 0.7, color: PDF_BORDER });
+  page.drawText("Report Date", { x: 28, y: 40, size: 9, font: fonts.regular, color: PDF_GRAY });
+  page.drawText(reportDate(), { x: 112, y: 40, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("Report ID", { x: A4_WIDTH - 162, y: 40, size: 9, font: fonts.regular, color: PDF_GRAY });
+  page.drawText(reportId, { x: A4_WIDTH - 92, y: 40, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
+}
+
+function drawSummaryPage(context: PdfContext) {
+  const { properties, clientName, requirement, logo, fonts } = context;
+  const page = context.pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  drawHeader(page, logo, fonts, "Summary", 2);
+  page.drawText(`Hi ${pdfSafeText(clientName).split(" ")[0] || "there"},`, { x: 36, y: 670, size: 41, font: fonts.regular, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(`Thanks for sharing your requirements. I have selected ${properties.length} properties that best match your criteria and goals.`, 46, 4), 36, 610, 14, fonts.regular, { leading: 24 });
+
+  page.drawText("YOUR CRITERIA", { x: 318, y: 690, size: 9, font: fonts.bold, color: rgb(0, 0, 0) });
+  const criteria = summaryCriteria(requirement);
+  criteria.forEach((item, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = 318 + col * 126;
+    const y = 636 - row * 48;
+    page.drawRectangle({ x, y, width: 116, height: 34, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+    page.drawText(pdfSafeText(item).slice(0, 22), { x: x + 14, y: y + 12, size: 9, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
+  });
+
+  page.drawText(`WHY THESE ${properties.length} PROPERTIES?`, { x: 36, y: 470, size: 11, font: fonts.bold, color: rgb(0, 0, 0) });
+  [
+    ["Carefully matched", "Each home aligns tightly with your must-haves and long-term objectives."],
+    ["Strong long-term value", "Properties with practical pricing, location strength, and daily usability."],
+    ["Great lifestyle fit", "Spaces that support how you live, from commute to weekend comfort."],
+  ].forEach(([title, body], index) => {
+    const y = 400 - index * 82;
+    page.drawRectangle({ x: 36, y, width: 42, height: 42, color: PDF_GREEN });
+    page.drawText(String(index + 1), { x: 54, y: y + 14, size: 16, font: fonts.bold, color: rgb(1, 1, 1) });
+    page.drawText(title, { x: 96, y: y + 28, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
+    drawTextLines(page, wrapPdfText(body, 42, 2), 96, y + 10, 9.5, fonts.regular, { color: rgb(0.2, 0.2, 0.2), leading: 13 });
+    if (index < 2) page.drawLine({ start: { x: 36, y: y - 22 }, end: { x: 280, y: y - 22 }, thickness: 0.7, color: PDF_BORDER });
+  });
+
+  page.drawRectangle({ x: 318, y: 185, width: 242, height: 286, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawText("AT A GLANCE", { x: 338, y: 438, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
+  [
+    ["Properties", String(properties.length)],
+    ["Best Match Score", `${matchScore(0)}%`],
+    ["Price Range", priceRange(properties)],
+    ["Avg Bedrooms", averageNumber(properties, "bedrooms")],
+    ["Avg Bathrooms", averageNumber(properties, "bathrooms")],
+    ["Avg Size", averageNumber(properties, "sqft") === "On request" ? "On request" : `${averageNumber(properties, "sqft")} sqft`],
+  ].forEach(([label, value], index) => {
+    const y = 392 - index * 38;
+    page.drawText(label, { x: 338, y, size: 10, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
+    page.drawText(value, { x: 530 - fonts.bold.widthOfTextAtSize(value, 14), y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+    if (index < 5) page.drawLine({ start: { x: 338, y: y - 16 }, end: { x: 540, y: y - 16 }, thickness: 0.5, color: PDF_BORDER });
+  });
+
+  page.drawRectangle({ x: 36, y: 88, width: A4_WIDTH - 72, height: 58, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawCircle({ x: 74, y: 117, size: 14, color: PDF_LIGHT_GREEN });
+  page.drawText("OK", { x: 68, y: 113, size: 7, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("All properties are ready for your review.", { x: 106, y: 112, size: 12, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawFooter(page, logo, fonts, 2);
+}
+
+async function drawOverviewPage(context: PdfContext) {
+  const { pdfDoc, properties, logo, fonts } = context;
+  const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  drawHeader(page, logo, fonts, "Property Overview", 3);
+  page.drawText(`Your ${properties.length} Best Matches`, { x: 36, y: 715, size: 36, font: fonts.regular, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(`Here are ${properties.length} handpicked properties that best match your criteria and goals.`, 58, 2), 36, 675, 12, fonts.regular, { leading: 17 });
+
+  const images = await Promise.all(properties.map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
+  properties.slice(0, 5).forEach((property, index) => {
+    const isWide = index === 4 || properties.length === 1;
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = isWide ? 36 : 36 + col * 265;
+    const y = isWide ? 180 : 520 - row * 188;
+    const w = isWide ? 524 : 248;
+    const h = isWide ? 112 : 154;
+    page.drawRectangle({ x, y, width: w, height: h, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+    drawImageFrame(page, images[index], x + 6, y + 8, isWide ? 230 : 132, h - 16);
+    page.drawCircle({ x: x + 22, y: y + h - 24, size: 13, color: rgb(0, 0, 0) });
+    page.drawText(String(index + 1), { x: x + 18, y: y + h - 29, size: 13, font: fonts.bold, color: rgb(1, 1, 1) });
+    const tx = x + (isWide ? 255 : 152);
+    page.drawText(propertyTitle(property, index).slice(0, isWide ? 30 : 18), { x: tx, y: y + h - 38, size: 10.5, font: fonts.bold, color: rgb(0, 0, 0) });
+    page.drawText(propertyLocation(property).slice(0, 25), { x: tx, y: y + h - 56, size: 8.5, font: fonts.regular, color: rgb(0, 0, 0) });
+    const specs = propertySpecs(property).slice(0, 3);
+    specs.forEach((spec, specIndex) => {
+      page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx, y: y + h - 84 - specIndex * 16, size: 8.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+    });
+    page.drawText(pdfSafeText(property.price_label || "Price on request"), { x: tx, y: y + 30, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
+    page.drawRectangle({ x: x + w - 90, y: y + 14, width: 70, height: 42, color: PDF_SOFT });
+    page.drawText(`${matchScore(index)}%`, { x: x + w - 72, y: y + 31, size: 18, font: fonts.bold, color: PDF_GREEN });
+    page.drawText("MATCH", { x: x + w - 66, y: y + 20, size: 7, font: fonts.bold, color: PDF_GREEN });
+  });
+
+  page.drawRectangle({ x: 36, y: 82, width: A4_WIDTH - 72, height: 68, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawCircle({ x: 76, y: 116, size: 24, color: PDF_GREEN });
+  page.drawText("*", { x: 68, y: 105, size: 34, font: fonts.bold, color: rgb(0.92, 0.72, 0.25) });
+  page.drawText("TOP PICK", { x: 132, y: 127, size: 7, font: fonts.bold, color: PDF_GREEN });
+  page.drawText(propertyTitle(properties[0], 0).slice(0, 36), { x: 132, y: 108, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("Excellent match across your criteria and budget goals.", { x: 132, y: 91, size: 9, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+  page.drawLine({ start: { x: 380, y: 92 }, end: { x: 380, y: 140 }, thickness: 0.6, color: PDF_BORDER });
+  page.drawText(`${matchScore(0)}%`, { x: 438, y: 108, size: 36, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("MATCH SCORE", { x: 444, y: 91, size: 9, font: fonts.bold, color: PDF_GREEN });
+  drawFooter(page, logo, fonts, 3);
+}
+
+function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: PdfFonts, y: number) {
+  const specs = propertySpecs(property).slice(0, 5);
+  const width = 520 / Math.max(1, specs.length);
+  specs.forEach((spec, index) => {
+    const x = 40 + index * width;
+    page.drawText(spec.value, { x: x + 20, y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+    page.drawText(spec.label, { x: x + 20, y: y - 14, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+    if (index > 0) page.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 24 }, thickness: 0.5, color: PDF_BORDER });
+  });
+}
+
+async function drawPropertyDetailPage(context: PdfContext, property: Record<string, unknown>, index: number) {
+  const { pdfDoc, properties, logo, fonts } = context;
+  const pageNumber = 4 + index;
+  const images = await embedPropertyImageSet(pdfDoc, property);
+  const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  drawHeader(page, logo, fonts, "Property Match Report", pageNumber);
+  page.drawLine({ start: { x: 36, y: 760 }, end: { x: A4_WIDTH - 36, y: 760 }, thickness: 0.7, color: PDF_BORDER });
+  page.drawText("PROPERTY DETAIL", { x: 36, y: 730, size: 10, font: fonts.bold, color: PDF_GREEN });
+  page.drawText(`PROPERTY ${index + 1} OF ${properties.length}`, { x: 36, y: 706, size: 8, font: fonts.bold, color: PDF_GRAY });
+  page.drawText(propertyTitle(property, index).slice(0, 42), { x: 36, y: 668, size: 24, font: fonts.regular, color: rgb(0, 0, 0) });
+  if (index === 0) {
+    page.drawRectangle({ x: 310, y: 664, width: 64, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
+    page.drawText("TOP PICK", { x: 320, y: 669, size: 8, font: fonts.bold, color: PDF_GREEN });
+  } else if (index === 1) {
+    page.drawRectangle({ x: 310, y: 664, width: 72, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
+    page.drawText("BEST VALUE", { x: 319, y: 669, size: 8, font: fonts.bold, color: PDF_GREEN });
+  }
+  page.drawText(`${matchScore(index)}%`, { x: A4_WIDTH - 94, y: 672, size: 28, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("MATCH SCORE", { x: A4_WIDTH - 92, y: 654, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+  page.drawLine({ start: { x: A4_WIDTH - 94, y: 644 }, end: { x: A4_WIDTH - 36, y: 644 }, thickness: 1.2, color: PDF_GREEN });
+
+  drawImageFrame(page, images[0] || null, 36, 410, 524, 210);
+  drawImageFrame(page, images[1] || images[0] || null, 36, 296, 164, 96);
+  drawImageFrame(page, images[2] || images[0] || null, 215, 296, 164, 96);
+  drawImageFrame(page, images[3] || images[0] || null, 394, 296, 166, 96);
+  drawSpecRow(page, property, fonts, 250);
+  page.drawLine({ start: { x: 36, y: 220 }, end: { x: A4_WIDTH - 36, y: 220 }, thickness: 0.7, color: PDF_BORDER });
+
+  page.drawText("DESCRIPTION", { x: 36, y: 190, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(property.description || property.headline || "A strong match for your requirements.", 36, 7), 36, 165, 8.8, fonts.regular, { color: rgb(0.16, 0.16, 0.16), leading: 14 });
+  page.drawText("HIGHLIGHTS", { x: 238, y: 190, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
+  propertyHighlights(property, 4).forEach((highlight, hIndex) => {
+    page.drawCircle({ x: 242, y: 164 - hIndex * 23, size: 2, color: PDF_GREEN });
+    drawTextLines(page, wrapPdfText(highlight, 30, 2), 252, 160 - hIndex * 23, 8, fonts.regular, { color: rgb(0.17, 0.17, 0.17), leading: 10 });
+  });
+  page.drawRectangle({ x: 420, y: 104, width: 140, height: 88, color: PDF_SOFT });
+  page.drawLine({ start: { x: 420, y: 104 }, end: { x: 420, y: 192 }, thickness: 1.1, color: PDF_GREEN });
+  page.drawText("VALUE ANGLE", { x: 448, y: 165, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(property.headline || "Strong fit for your goals.", 25, 4), 442, 144, 8.6, fonts.regular, { color: rgb(0.16, 0.16, 0.16), leading: 13 });
+  drawFooter(page, logo, fonts, pageNumber);
+}
+
+async function drawContactPage(context: PdfContext) {
+  const { pdfDoc, properties, broker, logo, fonts, brokerPhoto } = context;
+  const pageNumber = 4 + properties.length;
+  const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  drawHeader(page, logo, fonts, "Property Match Report", pageNumber);
+  page.drawText("Let's take the next step.", { x: 42, y: 650, size: 29, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawLine({ start: { x: 43, y: 628 }, end: { x: 72, y: 628 }, thickness: 1.4, color: PDF_GREEN });
+  drawTextLines(page, wrapPdfText("I would love to walk you through these properties and help you find the right one. Here is how we can move forward.", 56, 3), 42, 595, 12.5, fonts.regular, { leading: 22 });
+
+  ["Review", "Shortlist", "Inspect"].forEach((step, index) => {
+    const x = 70 + index * 135;
+    page.drawCircle({ x, y: 500, size: 18, color: rgb(0, 0, 0) });
+    page.drawText(String(index + 1), { x: x - 5, y: 494, size: 15, font: fonts.bold, color: rgb(1, 1, 1) });
+    if (index < 2) page.drawLine({ start: { x: x + 55, y: 500 }, end: { x: x + 105, y: 500 }, thickness: 1, color: PDF_BORDER });
+    page.drawText(step, { x: x - 25, y: 450, size: 12, font: fonts.bold, color: rgb(0, 0, 0) });
+  });
+
+  page.drawRectangle({ x: 38, y: 305, width: 340, height: 74, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawText("Ready to chat?", { x: 96, y: 352, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("Book a time that suits you.", { x: 96, y: 333, size: 10, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
+  page.drawRectangle({ x: 238, y: 322, width: 112, height: 34, color: rgb(1, 1, 1), borderColor: PDF_GREEN, borderWidth: 0.9 });
+  page.drawText("Schedule a Call", { x: 258, y: 335, size: 10, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("Thank you for trusting me with your property search.", { x: 42, y: 250, size: 12, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
+
+  page.drawRectangle({ x: 410, y: 145, width: 150, height: 500, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawText("YOUR PROPERTY EXPERT", { x: 432, y: 608, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawLine({ start: { x: 466, y: 596 }, end: { x: 494, y: 596 }, thickness: 1, color: PDF_GREEN });
+  drawImageFrame(page, brokerPhoto, 445, 515, 80, 62);
+  page.drawText(brokerName(broker).slice(0, 22), { x: 436, y: 484, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText(brokerRole(broker).slice(0, 26), { x: 432, y: 466, size: 9, font: fonts.regular, color: rgb(0.15, 0.15, 0.15) });
+  [broker?.phone, broker?.email, broker?.website_url].filter(Boolean).forEach((item, index) => {
+    page.drawText(pdfSafeText(item).slice(0, 28), { x: 438, y: 425 - index * 25, size: 8.5, font: fonts.regular, color: rgb(0.12, 0.12, 0.12) });
+  });
+  page.drawRectangle({ x: 425, y: 265, width: 120, height: 90, color: PDF_SOFT });
+  drawBrand(page, logo, fonts, 456, 334, 78);
+  page.drawText("Short videos. Smart matches.", { x: 440, y: 305, size: 8.5, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("Better decisions.", { x: 462, y: 290, size: 8.5, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawRectangle({ x: 425, y: 170, width: 120, height: 70, color: PDF_SOFT });
+  drawTextLines(page, wrapPdfText("My goal is simple: help you find a home you will love today and for years to come.", 24, 4), 440, 220, 8.5, fonts.regular, { leading: 12 });
+  drawFooter(page, logo, fonts, pageNumber);
+}
+
+type PdfContext = {
+  pdfDoc: PDFDocument;
+  clientName: string;
+  requirement: RequirementRow;
+  properties: Array<Record<string, unknown>>;
+  broker: BrokerPdfProfile | null;
+  logo: PDFImage | null;
+  brokerPhoto: PDFImage | null;
+  fonts: PdfFonts;
+  reportId: string;
+};
+
+async function buildDesignedPdf(clientName: string, properties: Array<Record<string, unknown>>, requirement: RequirementRow, broker: BrokerPdfProfile | null, reportId: string) {
   const pdfDoc = await PDFDocument.create();
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const logo = await embedImageFromUrl(pdfDoc, BRAND_LOGO_URL);
-  const fonts = { regular, bold };
+  const brokerPhoto = broker?.profile_photo_url ? await embedImageFromUrl(pdfDoc, broker.profile_photo_url) : null;
+  const context: PdfContext = { pdfDoc, clientName, requirement, properties, broker, logo, brokerPhoto, fonts: { regular, bold }, reportId };
 
-  await drawPdfCover(pdfDoc, title, clientName, properties, logo, fonts);
-
+  await drawCoverPage(pdfDoc, context);
+  drawSummaryPage(context);
+  await drawOverviewPage(context);
   for (const [index, property] of properties.entries()) {
-    const propertyImages = await embedPropertyImageSet(pdfDoc, property);
-    drawPdfPropertyPage(pdfDoc, property, propertyImages, index, logo, fonts);
+    await drawPropertyDetailPage(context, property, index);
   }
+  await drawContactPage(context);
 
   return await pdfDoc.save();
 }
@@ -1179,9 +1416,16 @@ async function buildDesignedPdf(title: string, clientName: string, properties: A
 export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
   const { data: properties, error } = await supabase
     .from("property_recommendations")
-    .select("title,area,city,property_type,rent_or_buy,price_label,bedrooms,bathrooms,sqft,size_label,headline,description,highlights,images,sort_order")
+    .select("title,area,city,property_type,rent_or_buy,price,price_label,currency,bedrooms,bathrooms,sqft,size_label,headline,description,highlights,images,sort_order")
     .eq("run_id", run.id);
   if (error || !properties?.length) throw error ?? new Error("NO_PROPERTIES_FOR_PDF");
+
+  const { data: brokerProfile, error: brokerError } = await supabase
+    .from("profiles")
+    .select("full_name,company_name,phone,email,profile_photo_url,website_url,calendar_url")
+    .eq("user_id", run.user_id)
+    .maybeSingle();
+  if (brokerError) throw brokerError;
 
   const sortedProperties = [...properties].sort((a, b) => {
     const aOrder = typeof a.sort_order === "number" ? a.sort_order : 999;
@@ -1193,7 +1437,8 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
   const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const pdfProperties = sortedProperties.slice(0, targetCount) as Array<Record<string, unknown>>;
   const pdfId = crypto.randomUUID();
-  const pdfBytes = await buildDesignedPdf(title, clientName, pdfProperties);
+  const reportId = `PS-${pdfId.slice(0, 8).toUpperCase()}`;
+  const pdfBytes = await buildDesignedPdf(clientName, pdfProperties, requirement, brokerProfile as BrokerPdfProfile | null, reportId);
   const objectPath = `${run.user_id}/${pdfId}.pdf`;
   let pdfUrl = `data:application/pdf;base64,${bytesToBase64(pdfBytes)}`;
   let storagePath: string | null = null;
@@ -1221,8 +1466,8 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
       user_id: run.user_id,
       run_id: run.id,
       pdf_url: pdfUrl,
-      page_count: pdfProperties.length + 1,
-      input_json: { title, clientName, properties: pdfProperties, storagePath },
+      page_count: pdfProperties.length + 4,
+      input_json: { title, clientName, properties: pdfProperties, brokerProfile, reportId, storagePath },
       status: "completed",
       completed_at: new Date().toISOString(),
     })
