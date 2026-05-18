@@ -1,5 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.77.0";
-import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
+import {
+  clip,
+  endPath,
+  PDFDocument,
+  popGraphicsState,
+  pushGraphicsState,
+  rectangle,
+  StandardFonts,
+  rgb,
+} from "https://esm.sh/pdf-lib@1.17.1";
 import type { PDFImage } from "https://esm.sh/pdf-lib@1.17.1";
 
 export const corsHeaders = {
@@ -63,34 +72,7 @@ const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 const PDF_BUCKET = "generated-pdfs";
-
-const fallbackImageSets = [
-  [
-    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=82",
-  ],
-  [
-    "https://images.unsplash.com/photo-1605276374104-dee2a0ed3cd6?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=82",
-  ],
-  [
-    "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=82",
-  ],
-  [
-    "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1200&q=82",
-  ],
-  [
-    "https://images.unsplash.com/photo-1598228723793-52759bba239c?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600566753151-384129cf4e3e?auto=format&fit=crop&w=1200&q=82",
-    "https://images.unsplash.com/photo-1600607688066-890987f18a86?auto=format&fit=crop&w=1200&q=82",
-  ],
-];
+const CLIENT_SAFE_FALLBACK_WARNING = "Live property search could not return enough verified listings. Regenerate before sending to a client.";
 
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -268,17 +250,10 @@ function buildFallbackProperties(requirement: RequirementRow, propertyTargetCoun
     const price = basePrice ? Math.round(basePrice * (0.94 + index * 0.03)) : null;
     const highlights = [
       inferred.rentOrBuy === "rent" ? "Move-in friendly" : "Strong end-use fit",
-      "Broker-reviewed shortlist",
+      "Budget aligned",
       "Good connectivity",
       order === 1 ? "Closest brief match" : order === 2 ? "Balanced value" : order === 3 ? "Lifestyle fit" : order === 4 ? "Extra space" : "Smart backup",
     ];
-    const fallbackImages = fallbackImageSets[index % fallbackImageSets.length].map((url, imageIndex) => ({
-      id: `fallback-${order}-${imageIndex + 1}`,
-      url,
-      alt: `${title} image ${imageIndex + 1}`,
-      role: imageIndex === 0 ? "hero" : imageIndex === 1 ? "interior" : "detail",
-    }));
-
     return {
       external_property_id: `curated-${order}`,
       title,
@@ -294,10 +269,10 @@ function buildFallbackProperties(requirement: RequirementRow, propertyTargetCoun
       bathrooms: inferred.bathrooms,
       sqft: inferred.sqftMin || inferred.sqftMax,
       size_label: inferred.sqftMin || inferred.sqftMax ? `${inferred.sqftMin ?? inferred.sqftMax} sqft+` : null,
-      headline: order === 1 ? "Closest match to the client brief" : order === 2 ? "A practical value-led option" : order === 3 ? "A strong lifestyle-led fit" : order === 4 ? "More space in a calmer setting" : "A polished backup worth viewing",
-      description: `A curated ${inferred.propertyType} match around ${areas[index]} based on the captured requirement: ${inferred.note}`,
+      headline: order === 1 ? "Closest match to your requirement" : order === 2 ? "A practical value-led option" : order === 3 ? "A strong lifestyle-led fit" : order === 4 ? "More space in a calmer setting" : "A polished backup worth viewing",
+      description: `A ${inferred.propertyType} match around ${areas[index]} based on your requirement: ${inferred.note}`,
       highlights,
-      images: fallbackImages,
+      images: [],
       sort_order: order,
       trace: {
         source_url: null,
@@ -306,18 +281,19 @@ function buildFallbackProperties(requirement: RequirementRow, propertyTargetCoun
         agent_name: null,
         agent_phone: null,
         agent_email: null,
-        internal_notes: "Fallback recommendation generated because no live property-search adapter is configured.",
+        internal_notes: CLIENT_SAFE_FALLBACK_WARNING,
       },
     };
   });
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | null {
+  const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(cleaned);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
   } catch {
-    const match = text.match(/\{[\s\S]*\}/);
+    const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {
       return JSON.parse(match[0]);
@@ -325,6 +301,147 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
       return null;
     }
   }
+}
+
+function collectResponseText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(collectResponseText).filter(Boolean).join("\n");
+  if (!value || typeof value !== "object") return "";
+
+  const record = value as Record<string, unknown>;
+  const direct = [
+    typeof record.output_text === "string" ? record.output_text : null,
+    typeof record.text === "string" ? record.text : null,
+  ].filter(Boolean).join("\n");
+
+  const nested = ["output", "content", "message"].map((key) => collectResponseText(record[key])).filter(Boolean).join("\n");
+  return [direct, nested].filter(Boolean).join("\n");
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function normalizeUrl(value: string, baseUrl?: string | null) {
+  try {
+    return new URL(decodeHtml(value), baseUrl || undefined).toString();
+  } catch {
+    return null;
+  }
+}
+
+function isProbablyListingImage(url: string) {
+  const lower = url.toLowerCase();
+  if (!lower.startsWith("http")) return false;
+  if (/(logo|icon|favicon|sprite|avatar|profile|placeholder|blank|map|staticmap)/.test(lower)) return false;
+  if (/\.(svg|gif)(\?|$)/.test(lower)) return false;
+  return /\.(jpg|jpeg|png|webp)(\?|$)/.test(lower) ||
+    /(image|images|photo|photos|property|listing|upload|media|cdn)/.test(lower);
+}
+
+function isGenericFallbackImage(url: string) {
+  const lower = url.toLowerCase();
+  return lower.includes("images.unsplash.com") || lower.includes("source.unsplash.com");
+}
+
+function uniqueImageUrls(urls: string[]) {
+  const seen = new Set<string>();
+  return urls.filter((url) => {
+    const normalized = url.split("#")[0];
+    if (seen.has(normalized) || !isProbablyListingImage(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+async function extractListingImagesFromSource(sourceUrl: string | null, title: string) {
+  if (!sourceUrl) return [];
+  const normalizedSource = normalizeUrl(sourceUrl);
+  if (!normalizedSource) return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(normalizedSource, {
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 PropShorts/1.0 (+https://propshorts.netlify.app)",
+      },
+    });
+    if (!response.ok) return [];
+    const html = (await response.text()).slice(0, 900_000);
+    const candidates: string[] = [];
+
+    const metaRegex = /<meta\s+[^>]*(?:property|name)=["'](?:og:image|og:image:secure_url|twitter:image|twitter:image:src)["'][^>]*content=["']([^"']+)["'][^>]*>/gi;
+    for (const match of html.matchAll(metaRegex)) {
+      const imageUrl = normalizeUrl(match[1], normalizedSource);
+      if (imageUrl) candidates.push(imageUrl);
+    }
+
+    const reversedMetaRegex = /<meta\s+[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|og:image:secure_url|twitter:image|twitter:image:src)["'][^>]*>/gi;
+    for (const match of html.matchAll(reversedMetaRegex)) {
+      const imageUrl = normalizeUrl(match[1], normalizedSource);
+      if (imageUrl) candidates.push(imageUrl);
+    }
+
+    const jsonImageRegex = /"image"\s*:\s*(?:"([^"]+)"|\[([^\]]+)\])/gi;
+    for (const match of html.matchAll(jsonImageRegex)) {
+      if (match[1]) {
+        const imageUrl = normalizeUrl(match[1], normalizedSource);
+        if (imageUrl) candidates.push(imageUrl);
+      }
+      if (match[2]) {
+        for (const nested of match[2].matchAll(/"([^"]+)"/g)) {
+          const imageUrl = normalizeUrl(nested[1], normalizedSource);
+          if (imageUrl) candidates.push(imageUrl);
+        }
+      }
+    }
+
+    const urlRegex = /https?:\\?\/\\?\/[^"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\\s<>]*)?/gi;
+    for (const match of html.matchAll(urlRegex)) {
+      const imageUrl = normalizeUrl(match[0].replace(/\\\//g, "/"), normalizedSource);
+      if (imageUrl) candidates.push(imageUrl);
+    }
+
+    return uniqueImageUrls(candidates).slice(0, PROPERTY_IMAGES_PER_OPTION).map((url, index) => ({
+      id: `source-${index + 1}`,
+      url,
+      alt: `${title} photo ${index + 1}`,
+      role: index === 0 ? "hero" : index === 1 ? "interior" : "detail",
+    }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function repairSearchJson(openAiKey: string, text: string, targetCount: number) {
+  if (!text.trim()) return null;
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: [
+        "Convert the following property-search result into strict JSON only.",
+        `Return exactly the schema requested by PropShorts, with up to ${targetCount} properties. Do not add Markdown.`,
+        "Keep only verified listing facts and verified image URLs. If a property has a listing page but no direct image URLs, keep trace.source_url and leave images empty.",
+        text,
+      ].join("\n\n"),
+      temperature: 0,
+    }),
+  });
+  if (!response.ok) return null;
+  const repaired = await response.json();
+  return parseJsonObject(collectResponseText(repaired));
 }
 
 function normalizeAiProperty(
@@ -366,6 +483,27 @@ function normalizeAiProperty(
   };
 }
 
+async function enrichPropertyWithSourceImages(property: PropertyCandidate): Promise<PropertyCandidate> {
+  const directImages = property.images.filter((image) => image.url && !isGenericFallbackImage(image.url));
+  if (directImages.length >= 2) {
+    return { ...property, images: directImages.slice(0, PROPERTY_IMAGES_PER_OPTION) };
+  }
+
+  const sourceImages = await extractListingImagesFromSource(property.trace.source_url, property.title);
+  if (sourceImages.length > 0) {
+    const merged = [...directImages, ...sourceImages].filter((image, index, list) =>
+      list.findIndex((candidate) => candidate.url === image.url) === index
+    );
+    return { ...property, images: merged.slice(0, PROPERTY_IMAGES_PER_OPTION) };
+  }
+
+  if (property.trace.source_url) {
+    return { ...property, images: directImages.slice(0, PROPERTY_IMAGES_PER_OPTION) };
+  }
+
+  return property;
+}
+
 export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): Promise<{
   searchSummary: Record<string, unknown>;
   properties: PropertyCandidate[];
@@ -378,9 +516,9 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     return {
       searchSummary: {
         interpreted_brief: inferred.note,
-        assumptions: ["Live web search is not configured; generated a broker-review shortlist from the requirement."],
+        assumptions: ["Live web search is not configured; generated a requirement-based draft."],
         property_category: inferred.category,
-        warnings: ["Review these recommendations before sharing with a client."],
+        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
       },
       properties: buildFallbackProperties(requirement, targetCount),
     };
@@ -389,11 +527,13 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
   const prompt = [
     "You are the PropShorts Search Agent. Return JSON only.",
     `Find ${targetCount} highly suitable, traceable, client-safe property recommendations from the broker requirement.`,
-    "Use live web results when available. Prefer credible listing pages with useful photos. Relevance beats volume.",
-    "Each selected property should include exactly 3 image references when possible: hero/exterior, main interior, and another useful angle.",
-    "Images must be direct, client-safe image URLs when available. If a direct image URL cannot be verified, return fewer images rather than inventing one.",
+    "Use live web results. Prefer credible active listing pages with useful photos. Relevance beats volume.",
+    "Each selected property should include up to 3 direct image URLs from the actual listing page when possible: hero/exterior, main interior, and another useful angle.",
+    "Never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
+    "If direct image URLs cannot be verified, return an empty images array and include the public listing page in trace.source_url so PropShorts can extract the images.",
     "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
     "Keep source URLs and third-party listing contact data only inside trace. Never copy third-party contact data into client-safe fields.",
+    "Return clean client-facing copy. Do not mention brokers, internal search systems, AI, handoff, fallback, or technical workflow details in title/headline/description/highlights.",
     "Schema: {\"search_summary\":{\"interpreted_brief\":\"string\",\"assumptions\":[\"string\"],\"property_category\":\"residential|commercial|land\",\"warnings\":[\"string\"]},\"properties\":[{\"external_property_id\":\"string\",\"title\":\"string\",\"area\":\"string|null\",\"city\":\"string|null\",\"property_category\":\"residential|commercial|land\",\"property_type\":\"string|null\",\"rent_or_buy\":\"rent|buy|unknown\",\"price\":number|null,\"price_label\":\"string|null\",\"currency\":\"string|null\",\"bedrooms\":number|null,\"bathrooms\":number|null,\"sqft\":number|null,\"size_label\":\"string|null\",\"headline\":\"string\",\"description\":\"string\",\"highlights\":[\"string\"],\"images\":[{\"id\":\"string\",\"url\":\"https://...\",\"alt\":\"string\",\"role\":\"hero|interior|detail\"}],\"trace\":{\"source_url\":\"string|null\",\"platform\":\"string|null\",\"listing_id\":\"string|null\",\"agent_name\":\"string|null\",\"agent_phone\":\"string|null\",\"agent_email\":\"string|null\",\"internal_notes\":\"string|null\"}}]}",
     `Requirement: ${JSON.stringify(requirement.refined_requirements_json ?? requirement.raw_input ?? requirement.source_url)}`,
   ].join("\n");
@@ -414,39 +554,35 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     return {
       searchSummary: {
         interpreted_brief: inferred.note,
-        assumptions: ["OpenAI search planning failed; generated a broker-review shortlist from the requirement."],
+        assumptions: ["Live search planning failed; generated a requirement-based draft."],
         property_category: inferred.category,
-        warnings: ["Review these recommendations before sharing with a client."],
+        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
       },
       properties: buildFallbackProperties(requirement, targetCount),
     };
   }
 
   const data = await response.json();
-  const text = data.output_text ||
-    data.output?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content ?? [])
-      ?.map((content: { text?: string }) => content.text ?? "")
-      ?.join("\n") ||
-    "";
-  const parsed = parseJsonObject(text);
+  const text = collectResponseText(data);
+  const parsed = parseJsonObject(text) || await repairSearchJson(openAiKey, text, targetCount);
   const rawProperties = Array.isArray(parsed?.properties) ? parsed.properties as Array<Record<string, unknown>> : [];
 
   if (!parsed || rawProperties.length === 0) {
     return {
       searchSummary: {
         interpreted_brief: inferred.note,
-        assumptions: ["Search output could not be parsed; generated a broker-review shortlist from the requirement."],
+        assumptions: ["Search output could not be parsed; generated a requirement-based draft."],
         property_category: inferred.category,
-        warnings: ["Review these recommendations before sharing with a client."],
+        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
       },
       properties: buildFallbackProperties(requirement, targetCount),
     };
   }
 
   const fallbackProperties = buildFallbackProperties(requirement, targetCount);
-  const normalizedProperties = rawProperties.slice(0, targetCount).map((property, index) =>
-    normalizeAiProperty(property, fallbackProperties[index], index)
-  );
+  const normalizedProperties = await Promise.all(rawProperties.slice(0, targetCount).map((property, index) =>
+    enrichPropertyWithSourceImages(normalizeAiProperty(property, fallbackProperties[index], index))
+  ));
   while (normalizedProperties.length < targetCount) {
     normalizedProperties.push(fallbackProperties[normalizedProperties.length]);
   }
@@ -831,22 +967,25 @@ function drawTextLines(
   });
 }
 
-function drawImageFrame(page: ReturnType<PDFDocument["addPage"]>, image: PDFImage | null, x: number, y: number, width: number, height: number) {
+function drawImageFrame(page: ReturnType<PDFDocument["addPage"]>, image: PDFImage | null, x: number, y: number, width: number, height: number, mode: "cover" | "contain" = "cover") {
   page.drawRectangle({ x, y, width, height, color: rgb(0.95, 0.95, 0.94) });
   if (!image) {
-    page.drawRectangle({ x: x + 10, y: y + 10, width: width - 20, height: height - 20, color: rgb(0.78, 0.80, 0.49) });
+    page.drawRectangle({ x: x + 14, y: y + 14, width: width - 28, height: height - 28, color: rgb(0.78, 0.80, 0.49) });
+    page.drawText("Photo unavailable", { x: x + 22, y: y + 22, size: 8, color: rgb(0.2, 0.2, 0.18) });
     return;
   }
 
-  const scale = Math.min(width / image.width, height / image.height);
+  const scale = mode === "cover" ? Math.max(width / image.width, height / image.height) : Math.min(width / image.width, height / image.height);
   const drawWidth = image.width * scale;
   const drawHeight = image.height * scale;
+  page.pushOperators(pushGraphicsState(), rectangle(x, y, width, height), clip(), endPath());
   page.drawImage(image, {
     x: x + (width - drawWidth) / 2,
     y: y + (height - drawHeight) / 2,
     width: drawWidth,
     height: drawHeight,
   });
+  page.pushOperators(popGraphicsState());
 }
 
 async function embedPropertyImageSet(pdfDoc: PDFDocument, property: Record<string, unknown>) {
@@ -854,13 +993,27 @@ async function embedPropertyImageSet(pdfDoc: PDFDocument, property: Record<strin
   return Promise.all(urls.map((url) => embedImageFromUrl(pdfDoc, url)));
 }
 
-function propertyMetaLine(property: Record<string, unknown>) {
+function drawPill(
+  page: ReturnType<PDFDocument["addPage"]>,
+  label: string,
+  value: unknown,
+  x: number,
+  y: number,
+  width: number,
+  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
+) {
+  page.drawRectangle({ x, y, width, height: 42, color: rgb(0.96, 0.96, 0.95) });
+  page.drawText(pdfSafeText(label).toUpperCase(), { x: x + 12, y: y + 25, size: 7, font: fonts.bold, color: rgb(0.58, 0.58, 0.55) });
+  page.drawText(pdfSafeText(value || "On request").slice(0, 24), { x: x + 12, y: y + 10, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
+}
+
+function propertyBriefLine(property: Record<string, unknown>) {
   return [
-    property.price_label,
-    typeof property.bedrooms === "number" ? `${property.bedrooms} bed` : null,
-    typeof property.bathrooms === "number" ? `${property.bathrooms} bath` : null,
-    property.size_label || (typeof property.sqft === "number" ? `${property.sqft} sqft` : null),
-  ].filter(Boolean).map(pdfSafeText).join("  /  ") || "Details on request";
+    property.property_type,
+    property.rent_or_buy && property.rent_or_buy !== "unknown" ? property.rent_or_buy : null,
+    property.area,
+    property.city,
+  ].filter(Boolean).map(pdfSafeText).join(" / ");
 }
 
 async function drawPdfCover(
@@ -872,29 +1025,36 @@ async function drawPdfCover(
   fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
 ) {
   const page = pdfDoc.addPage([612, 792]);
-  const heroImages = await Promise.all(properties.slice(0, 3).map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
+  const heroImage = await embedImageFromUrl(pdfDoc, imageRefs(properties[0]?.images)[0] || "");
+  const thumbnailImages = await Promise.all(properties.slice(1, 3).map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
 
   page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
-  page.drawRectangle({ x: 42, y: 44, width: 528, height: 704, color: rgb(1, 1, 1) });
-  if (logo) page.drawImage(logo, { x: 58, y: 696, width: 96, height: 42 });
-  else drawBrandFallback(page, fonts.bold, 58, 714);
+  drawImageFrame(page, heroImage, 34, 324, 544, 426);
+  page.drawRectangle({ x: 54, y: 462, width: 360, height: 210, color: rgb(1, 1, 1) });
+  if (logo) page.drawImage(logo, { x: 72, y: 626, width: 88, height: 38 });
+  else drawBrandFallback(page, fonts.bold, 72, 640);
 
-  page.drawText("RECOMMENDATION REPORT", { x: 58, y: 638, size: 11, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
-  drawTextLines(page, wrapPdfText(title, 19, 3), 58, 588, 42, fonts.bold, { leading: 45 });
-  page.drawText(pdfSafeText(`Prepared for ${clientName}`), { x: 58, y: 385, size: 17, font: fonts.regular, color: rgb(0.38, 0.38, 0.37) });
+  page.drawText("PROPERTY OPTIONS", { x: 72, y: 584, size: 10, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
+  drawTextLines(page, wrapPdfText(title, 20, 2), 72, 540, 34, fonts.bold, { leading: 36 });
+  page.drawText(pdfSafeText(`For ${clientName}`), { x: 72, y: 458, size: 15, font: fonts.regular, color: rgb(0.35, 0.35, 0.33) });
+
+  page.drawRectangle({ x: 34, y: 42, width: 544, height: 248, color: rgb(1, 1, 1) });
+  page.drawText("A concise shortlist of homes that match your requirement.", { x: 58, y: 250, size: 15, font: fonts.bold, color: rgb(0, 0, 0) });
   drawTextLines(page, [
-    "A broker-ready shortlist built from the captured client brief.",
-    "Photos, pricing cues, fit notes, and next-step context are formatted for client sharing.",
-  ], 58, 348, 12, fonts.regular, { color: rgb(0.32, 0.32, 0.31), leading: 18 });
+    "Compare location, price, fit notes, and photos at a glance.",
+    "Choose the homes you want to inspect next.",
+  ], 58, 224, 11, fonts.regular, { color: rgb(0.35, 0.35, 0.33), leading: 17 });
 
-  page.drawRectangle({ x: 58, y: 258, width: 496, height: 1, color: rgb(0, 0, 0) });
-  page.drawText(`${properties.length} selected properties`, { x: 58, y: 224, size: 18, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawText("PropShort video + PDF handoff", { x: 58, y: 198, size: 12, font: fonts.regular, color: rgb(0.36, 0.36, 0.34) });
+  const first = properties[0] || {};
+  drawPill(page, "Top match", first.title || "Option 1", 58, 148, 240, fonts);
+  drawPill(page, "Budget", first.price_label || "On request", 314, 148, 112, fonts);
+  drawPill(page, "Location", first.area || first.city || "On request", 442, 148, 112, fonts);
 
-  heroImages.forEach((image, index) => {
-    drawImageFrame(page, image, 58 + index * 168, 92, 156, 86);
+  thumbnailImages.forEach((image, index) => {
+    drawImageFrame(page, image, 58 + index * 156, 74, 140, 54);
   });
-  page.drawRectangle({ x: 58, y: 72, width: 496, height: 8, color: rgb(0, 0, 0) });
+  page.drawRectangle({ x: 370, y: 74, width: 184, height: 54, color: rgb(0, 0, 0) });
+  page.drawText("propshorts", { x: 426, y: 94, size: 14, font: fonts.bold, color: rgb(1, 1, 1) });
 }
 
 function drawPdfPropertyPage(
@@ -913,29 +1073,38 @@ function drawPdfPropertyPage(
 
   const page = pdfDoc.addPage([612, 792]);
   page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
-  page.drawRectangle({ x: 42, y: 44, width: 528, height: 704, color: rgb(1, 1, 1) });
-  if (logo) page.drawImage(logo, { x: 58, y: 704, width: 76, height: 34 });
-  else drawBrandFallback(page, fonts.bold, 58, 718);
+  page.drawRectangle({ x: 34, y: 38, width: 544, height: 716, color: rgb(1, 1, 1) });
+  if (logo) page.drawImage(logo, { x: 50, y: 716, width: 72, height: 32 });
+  else drawBrandFallback(page, fonts.bold, 50, 730);
 
-  page.drawText(`PROPERTY ${index + 1}`, { x: 58, y: 660, size: 10, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
-  drawTextLines(page, wrapPdfText(title, 25, 2), 58, 622, 28, fonts.bold, { leading: 31 });
-  page.drawText(pdfSafeText(location), { x: 58, y: 552, size: 13, font: fonts.regular, color: rgb(0.38, 0.38, 0.36) });
-  page.drawRectangle({ x: 58, y: 505, width: 360, height: 36, color: rgb(0, 0, 0) });
-  page.drawText(propertyMetaLine(property), { x: 74, y: 517, size: 11, font: fonts.bold, color: rgb(1, 1, 1) });
+  page.drawText(`OPTION ${index + 1}`, { x: 50, y: 674, size: 9, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
+  drawTextLines(page, wrapPdfText(title, 34, 2), 50, 640, 25, fonts.bold, { leading: 29 });
+  page.drawText(pdfSafeText(location), { x: 50, y: 582, size: 12, font: fonts.regular, color: rgb(0.38, 0.38, 0.36) });
+  page.drawRectangle({ x: 382, y: 590, width: 158, height: 38, color: rgb(0, 0, 0) });
+  page.drawText(pdfSafeText(property.price_label || "Price on request").slice(0, 25), { x: 396, y: 604, size: 12, font: fonts.bold, color: rgb(1, 1, 1) });
 
-  drawImageFrame(page, propertyImages[0] || null, 58, 260, 496, 220);
-  drawImageFrame(page, propertyImages[1] || null, 58, 140, 238, 100);
-  drawImageFrame(page, propertyImages[2] || null, 316, 140, 238, 100);
+  drawImageFrame(page, propertyImages[0] || null, 50, 334, 330, 220);
+  drawImageFrame(page, propertyImages[1] || null, 394, 444, 146, 110);
+  drawImageFrame(page, propertyImages[2] || null, 394, 334, 146, 96);
 
-  page.drawRectangle({ x: 58, y: 86, width: 496, height: 36, color: rgb(0.96, 0.96, 0.95) });
-  page.drawText("WHY THIS FITS", { x: 70, y: 108, size: 8, font: fonts.bold, color: rgb(0.48, 0.48, 0.46) });
-  drawTextLines(page, wrapPdfText(property.headline || property.description || "A strong fit for the captured brief.", 70, 2), 154, 108, 10, fonts.bold, { color: rgb(0.08, 0.08, 0.08), leading: 12 });
+  drawPill(page, "Beds", typeof property.bedrooms === "number" ? property.bedrooms : "Request", 50, 274, 104, fonts);
+  drawPill(page, "Baths", typeof property.bathrooms === "number" ? property.bathrooms : "Request", 166, 274, 104, fonts);
+  drawPill(page, "Size", property.size_label || (typeof property.sqft === "number" ? `${property.sqft} sqft` : "Request"), 282, 274, 118, fonts);
+  drawPill(page, "Type", property.property_type || "Home", 412, 274, 128, fonts);
 
-  page.drawText("HIGHLIGHTS", { x: 58, y: 58, size: 8, font: fonts.bold, color: rgb(0.55, 0.55, 0.53) });
-  highlights.slice(0, 3).forEach((highlight, highlightIndex) => {
-    page.drawRectangle({ x: 150 + highlightIndex * 134, y: 55, width: 6, height: 6, color: rgb(0, 0, 0) });
-    page.drawText(pdfSafeText(highlight).slice(0, 22), { x: 162 + highlightIndex * 134, y: 52, size: 8, font: fonts.regular, color: rgb(0.18, 0.18, 0.17) });
+  page.drawText("Why it works", { x: 50, y: 232, size: 15, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(property.description || property.headline || "A strong fit for your requirement.", 76, 4), 50, 208, 10.5, fonts.regular, { color: rgb(0.23, 0.23, 0.22), leading: 15 });
+
+  page.drawText("Highlights", { x: 50, y: 132, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
+  highlights.forEach((highlight, highlightIndex) => {
+    const row = Math.floor(highlightIndex / 2);
+    const col = highlightIndex % 2;
+    const x = 50 + col * 250;
+    const y = 100 - row * 30;
+    page.drawRectangle({ x, y: y + 4, width: 8, height: 8, color: rgb(0.78, 0.80, 0.49) });
+    drawTextLines(page, wrapPdfText(highlight, 31, 1), x + 18, y, 10, fonts.bold, { color: rgb(0.12, 0.12, 0.11) });
   });
+  page.drawText(pdfSafeText(propertyBriefLine(property)), { x: 50, y: 54, size: 8, font: fonts.regular, color: rgb(0.5, 0.5, 0.48) });
 }
 
 async function buildDesignedPdf(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
@@ -958,7 +1127,7 @@ async function buildDesignedPdf(title: string, clientName: string, properties: A
 export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
   const { data: properties, error } = await supabase
     .from("property_recommendations")
-    .select("title,area,city,price_label,bedrooms,sqft,size_label,headline,description,highlights,images,sort_order")
+    .select("title,area,city,property_type,rent_or_buy,price_label,bedrooms,bathrooms,sqft,size_label,headline,description,highlights,images,sort_order")
     .eq("run_id", run.id);
   if (error || !properties?.length) throw error ?? new Error("NO_PROPERTIES_FOR_PDF");
 
@@ -968,7 +1137,7 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
     return aOrder - bOrder;
   });
   const clientName = requirement.client_name || "Client";
-  const title = `PropShorts Recommendations for ${clientName}`;
+  const title = "Property Shortlist";
   const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const pdfProperties = sortedProperties.slice(0, targetCount) as Array<Record<string, unknown>>;
   const pdfId = crypto.randomUUID();
