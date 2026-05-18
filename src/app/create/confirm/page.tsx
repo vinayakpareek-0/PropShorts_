@@ -98,6 +98,7 @@ export default function CreateConfirmPage() {
   const [loading, setLoading] = useState(true);
   const [parsing, setParsing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [propertyCount, setPropertyCount] = useState<3 | 5>(3);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function CreateConfirmPage() {
 
     setGenerating(true);
     setError("");
-    router.push(`/create/processing/new?requirementId=${encodeURIComponent(requirement.id)}`);
+    router.push(`/create/processing/new?requirementId=${encodeURIComponent(requirement.id)}&propertyCount=${propertyCount}`);
   }
 
   return (
@@ -268,6 +269,31 @@ export default function CreateConfirmPage() {
                   ) : null}
                 </div>
               ) : null}
+
+              <div className="mt-6 rounded-2xl bg-white p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/35">
+                  Shortlist size
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {([3, 5] as const).map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setPropertyCount(count)}
+                      className={`rounded-xl px-4 py-3 text-left transition ${
+                        propertyCount === count
+                          ? "bg-black text-white"
+                          : "bg-[#f3f3f3] text-black hover:bg-black/5"
+                      }`}
+                    >
+                      <span className="block text-[15px] font-semibold">{count} properties</span>
+                      <span className={`mt-1 block text-[11px] ${propertyCount === count ? "text-white/60" : "text-black/40"}`}>
+                        {count === 3 ? "Faster render" : "Full showcase"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : null}
         </section>

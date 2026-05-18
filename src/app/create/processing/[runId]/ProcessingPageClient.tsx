@@ -95,6 +95,7 @@ export default function ProcessingPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requirementId = searchParams.get("requirementId");
+  const propertyCount = searchParams.get("propertyCount") === "5" ? "5" : "3";
   const started = useRef(false);
 
   const [steps, setSteps] = useState<Step[]>(initialSteps);
@@ -154,16 +155,16 @@ export default function ProcessingPageClient() {
         setStepStatus("start", "done");
 
         setStepStatus("search", "running");
-        await invokeStep("run-property-search", { run_id: runId });
+        await invokeStep("run-property-search", { run_id: runId, property_count: propertyCount });
         setStepStatus("search", "done");
 
         setStepStatus("video", "running");
-        const video = await invokeStep("generate-property-video", { run_id: runId });
+        const video = await invokeStep("generate-property-video", { run_id: runId, property_count: propertyCount });
         videoId = video.video_id || null;
         setStepStatus("video", "done");
 
         setStepStatus("pdf", "running");
-        const pdf = await invokeStep("generate-pdf-report", { run_id: runId });
+        const pdf = await invokeStep("generate-pdf-report", { run_id: runId, property_count: propertyCount });
         pdfId = pdf.pdf_id || null;
         setStepStatus("pdf", "done");
 
@@ -190,7 +191,7 @@ export default function ProcessingPageClient() {
     }
 
     runPipeline();
-  }, [requirementId, router]);
+  }, [propertyCount, requirementId, router]);
 
   const statusCopy = error || activeStepCopy(steps);
 

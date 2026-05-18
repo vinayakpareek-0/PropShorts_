@@ -13,6 +13,7 @@ const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
 const fps = 24;
 const activeRenders = new Set();
+let cachedLogoDataUri = null;
 
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -83,6 +84,18 @@ function fit(value, max = 78) {
 
 function compact(values) {
   return values.filter((value) => typeof value === "string" && value.trim().length > 0);
+}
+
+async function getLogoDataUri() {
+  if (cachedLogoDataUri !== null) return cachedLogoDataUri;
+  try {
+    const logoPath = path.join(process.cwd(), "public", "top_logo.png");
+    const bytes = await readFile(logoPath);
+    cachedLogoDataUri = `data:image/png;base64,${bytes.toString("base64")}`;
+  } catch {
+    cachedLogoDataUri = "";
+  }
+  return cachedLogoDataUri;
 }
 
 function metricLabel(property, imageIndex) {
@@ -182,51 +195,64 @@ function baseSvg(content) {
 </svg>`;
 }
 
-function footerMark() {
+function brandImage(logoDataUri, x, y, width = 118, height = 52) {
+  if (logoDataUri) {
+    return `<image href="${logoDataUri}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMinYMid meet"/>`;
+  }
+
+  return `
+    <rect x="${x}" y="${y + 11}" width="26" height="26" rx="2" fill="#080808"/>
+    <text x="${x + 40}" y="${y + 31}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900">propshorts</text>
+  `;
+}
+
+function footerMark(logoDataUri) {
   return `
     <text x="64" y="1204" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">PS 903</text>
-    <text x="552" y="1204" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">propshorts</text>
+    ${brandImage(logoDataUri, 512, 1174, 112, 50)}
     <rect x="64" y="1234" width="592" height="10" fill="#080808"/>
   `;
 }
 
-function agentBlock({ x = 64, y = 62, compact = false } = {}) {
-  const logoSize = compact ? 44 : 52;
+function agentBlock({ x = 64, y = 62, compact = false, logoDataUri = "" } = {}) {
+  const brandWidth = compact ? 102 : 118;
   const nameSize = compact ? 17 : 19;
   const lineGap = compact ? 18 : 20;
+  const textX = x + brandWidth + 16;
   return `
-    <rect x="${x}" y="${y}" width="${logoSize}" height="${logoSize}" rx="3" fill="#080808"/>
-    <text x="${x + logoSize / 2}" y="${y + logoSize / 2 + 9}" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 19 : 22}" font-weight="900">PS</text>
-    <text x="${x + logoSize + 16}" y="${y + 18}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="700">PropShorts Broker</text>
-    <text x="${x + logoSize + 16}" y="${y + 18 + lineGap}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">PropShorts Real Estate</text>
-    <text x="${x + logoSize + 16}" y="${y + 18 + lineGap * 2}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">Contact via broker</text>
+    ${brandImage(logoDataUri, x, y - 2, brandWidth, compact ? 45 : 52)}
+    <text x="${textX}" y="${y + 18}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="700">PropShorts Broker</text>
+    <text x="${textX}" y="${y + 18 + lineGap}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">PropShorts Real Estate</text>
+    <text x="${textX}" y="${y + 18 + lineGap * 2}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">Contact via broker</text>
   `;
 }
 
-function introGreetingSlide(clientName) {
+function introGreetingSlide(clientName, logoDataUri) {
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${brandImage(logoDataUri, 154, 192, 132, 58)}
     ${textBlock(["Hi"], { x: 154, y: 518, size: 148, weight: 900, lineHeight: 0.9 })}
     ${textBlock([`${fit(clientName, 20)}.`], { x: 160, y: 612, size: 44, weight: 700, lineHeight: 1 })}
-    ${footerMark()}
+    ${footerMark(logoDataUri)}
   `);
 }
 
-function introContextSlide() {
+function introContextSlide(logoDataUri) {
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
     ${textBlock(["Check", "Out", "These", "Properties!"], { x: 160, y: 360, size: 58, weight: 900, lineHeight: 0.94 })}
-    ${agentBlock({ x: 160, y: 690 })}
-    ${footerMark()}
+    ${agentBlock({ x: 160, y: 690, logoDataUri })}
+    ${footerMark(logoDataUri)}
   `);
 }
 
-function propertyNumberSlide(index) {
+function propertyNumberSlide(index, logoDataUri) {
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${brandImage(logoDataUri, 96, 132, 118, 52)}
     <circle cx="360" cy="610" r="112" fill="#080808"/>
     <text x="360" y="655" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="128" font-weight="900">${index + 1}</text>
-    ${footerMark()}
+    ${footerMark(logoDataUri)}
   `);
 }
 
@@ -244,13 +270,13 @@ function imagePanel(imageDataUri) {
   `;
 }
 
-function propertyImageSlide(property, index, imageIndex, imageDataUri) {
+function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataUri) {
   const label = `Property ${index + 1}`;
   const badge = metricLabel(property, imageIndex);
   const location = locationLabel(property);
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${agentBlock({ x: 96, y: 122, compact: true })}
+    ${agentBlock({ x: 96, y: 122, compact: true, logoDataUri })}
     ${imagePanel(imageDataUri)}
     <rect x="96" y="708" width="${Math.max(112, badge.length * 12)}" height="44" fill="#ffffff"/>
     <text x="116" y="736" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="900">${escapeXml(badge)}</text>
@@ -258,27 +284,28 @@ function propertyImageSlide(property, index, imageIndex, imageDataUri) {
     <text x="96" y="860" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="900">${escapeXml(fit(location, 26))}</text>
     <line x1="96" y1="894" x2="540" y2="894" stroke="#111111" stroke-width="1"/>
     ${textBlock(wrapText(property.headline || property.description || "A strong match for the brief.", 18, 3), { x: 96, y: 956, size: 40, weight: 850, lineHeight: 1.04 })}
-    ${footerMark()}
+    ${footerMark(logoDataUri)}
   `);
 }
 
-function outroSlide() {
+function outroSlide(logoDataUri) {
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
+    ${brandImage(logoDataUri, 168, 206, 132, 58)}
     <rect x="168" y="392" width="230" height="90" rx="10" fill="#080808"/>
     <text x="283" y="455" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="900">PDF</text>
     ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 168, y: 560, size: 30, weight: 800, lineHeight: 1.04 })}
-    ${footerMark()}
+    ${footerMark(logoDataUri)}
   `);
 }
 
-function closingSlide(script) {
+function closingSlide(script, logoDataUri) {
   return baseSvg(`
     <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
     ${textBlock(["Call", "me."], { x: 168, y: 390, size: 90, weight: 900, lineHeight: 0.86 })}
-    ${agentBlock({ x: 168, y: 680 })}
+    ${agentBlock({ x: 168, y: 680, logoDataUri })}
     ${textBlock(wrapText(script || "Let me know which one stands out and I will take care of the next steps for you.", 28, 4), { x: 168, y: 850, size: 25, color: "#333333", lineHeight: 1.22 })}
-    ${footerMark()}
+    ${footerMark(logoDataUri)}
   `);
 }
 
@@ -335,9 +362,9 @@ function concatFilePath(value) {
   return String(value).replace(/'/g, "'\\''");
 }
 
-async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientName, script, properties }) {
+async function renderVideoWithFfmpeg({ videoId, outputLocation, clientName, script, properties }) {
   const propertyLines = properties.slice(0, 5);
-  while (propertyLines.length < 5) {
+  while (propertyLines.length < 1) {
     propertyLines.push({
       title: "Property recommendation",
       area: null,
@@ -352,23 +379,24 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientNam
     });
   }
 
+  const logoDataUri = await getLogoDataUri();
   const imageMap = await preloadPropertyImages(propertyLines);
   const slides = [
-    { duration: 4, svg: introGreetingSlide(clientName) },
-    { duration: 6, svg: introContextSlide(title) },
+    { duration: 4, svg: introGreetingSlide(clientName, logoDataUri) },
+    { duration: 6, svg: introContextSlide(logoDataUri) },
   ];
 
   for (const [propertyIndex, property] of propertyLines.entries()) {
-    slides.push({ duration: 1, svg: propertyNumberSlide(propertyIndex) });
+    slides.push({ duration: 1, svg: propertyNumberSlide(propertyIndex, logoDataUri) });
     for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
       const imageUrl = property.images[imageIndex] || property.images[0] || null;
       const image = imageUrl ? imageMap.get(imageUrl) || null : null;
-      slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image) });
+      slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image, logoDataUri) });
     }
   }
 
-  slides.push({ duration: 4, svg: outroSlide(script) });
-  slides.push({ duration: 6, svg: closingSlide(script) });
+  slides.push({ duration: 4, svg: outroSlide(logoDataUri) });
+  slides.push({ duration: 6, svg: closingSlide(script, logoDataUri) });
 
   const slideFiles = [];
   for (const [index, slide] of slides.entries()) {
@@ -438,7 +466,6 @@ async function renderVideo(videoId, accessToken) {
     await renderVideoWithFfmpeg({
       videoId,
       outputLocation,
-      title: `PropShort for ${clientName}`,
       clientName,
       script: video.script || "",
       properties: propertiesFromInput(input),

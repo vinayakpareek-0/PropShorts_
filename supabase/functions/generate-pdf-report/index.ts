@@ -7,10 +7,12 @@ import {
   loadRequirement,
   loadRun,
   requireUser,
+  resolvePropertyTargetCount,
 } from "../_shared/propshorts-pipeline.ts";
 
 interface Body {
   run_id?: string;
+  property_count?: number | string;
 }
 
 Deno.serve(async (req) => {
@@ -28,7 +30,8 @@ Deno.serve(async (req) => {
 
     const run = await loadRun(supabase, runId);
     const requirement = await loadRequirement(supabase, run.requirement_id);
-    const pdf = await generatePdfRecord(supabase, run, requirement);
+    const propertyCount = resolvePropertyTargetCount(body.property_count);
+    const pdf = await generatePdfRecord(supabase, run, requirement, propertyCount);
     return jsonResponse({ success: true, run_id: run.id, pdf_id: pdf.id, pdf_url: pdf.pdf_url, status: "completed" });
   } catch (error) {
     const message = getErrorMessage(error);

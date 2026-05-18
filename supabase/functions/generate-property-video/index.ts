@@ -7,10 +7,12 @@ import {
   loadRequirement,
   loadRun,
   requireUser,
+  resolvePropertyTargetCount,
 } from "../_shared/propshorts-pipeline.ts";
 
 interface Body {
   run_id?: string;
+  property_count?: number | string;
 }
 
 Deno.serve(async (req) => {
@@ -28,7 +30,8 @@ Deno.serve(async (req) => {
 
     const run = await loadRun(supabase, runId);
     const requirement = await loadRequirement(supabase, run.requirement_id);
-    const video = await generateVideoRecord(supabase, run, requirement);
+    const propertyCount = resolvePropertyTargetCount(body.property_count);
+    const video = await generateVideoRecord(supabase, run, requirement, propertyCount);
     return jsonResponse({ success: true, run_id: run.id, video_id: video.id, status: "processing" });
   } catch (error) {
     const message = getErrorMessage(error);

@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.77.0";
+import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
+import type { PDFImage } from "https://esm.sh/pdf-lib@1.17.1";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,8 +58,10 @@ interface PropertyCandidate {
   };
 }
 
-const PROPERTY_TARGET_COUNT = 5;
+const PROPERTY_MAX_COUNT = 5;
+const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
+const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 
 const fallbackImageSets = [
   [
@@ -92,6 +96,11 @@ export function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+export function resolvePropertyTargetCount(value: unknown) {
+  const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : DEFAULT_PROPERTY_TARGET_COUNT;
+  return count === 3 ? 3 : PROPERTY_MAX_COUNT;
 }
 
 export function getSupabaseForRequest(req: Request) {
@@ -239,8 +248,9 @@ function inferRequirement(requirement: RequirementRow) {
   };
 }
 
-function buildFallbackProperties(requirement: RequirementRow): PropertyCandidate[] {
+function buildFallbackProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): PropertyCandidate[] {
   const inferred = inferRequirement(requirement);
+  const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const basePrice = inferred.budget;
   const areas = [
     inferred.area,
@@ -249,9 +259,9 @@ function buildFallbackProperties(requirement: RequirementRow): PropertyCandidate
     "Quieter residential pocket",
     "Value-led nearby option",
   ].filter(Boolean) as string[];
-  while (areas.length < PROPERTY_TARGET_COUNT) areas.push(inferred.location);
+  while (areas.length < targetCount) areas.push(inferred.location);
 
-  return Array.from({ length: PROPERTY_TARGET_COUNT }, (_, index) => {
+  return Array.from({ length: targetCount }, (_, index) => {
     const order = index + 1;
     const title = `${inferred.propertyType.replace(/\b\w/g, (char) => char.toUpperCase())} Option ${order} in ${areas[index]}`;
     const price = basePrice ? Math.round(basePrice * (0.94 + index * 0.03)) : null;
@@ -355,11 +365,12 @@ function normalizeAiProperty(
   };
 }
 
-export async function searchProperties(requirement: RequirementRow): Promise<{
+export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): Promise<{
   searchSummary: Record<string, unknown>;
   properties: PropertyCandidate[];
 }> {
   const inferred = inferRequirement(requirement);
+  const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const openAiKey = Deno.env.get("OPENAI_API_KEY");
 
   if (!openAiKey) {
@@ -370,13 +381,13 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
         property_category: inferred.category,
         warnings: ["Review these recommendations before sharing with a client."],
       },
-      properties: buildFallbackProperties(requirement),
+      properties: buildFallbackProperties(requirement, targetCount),
     };
   }
 
   const prompt = [
     "You are the PropShorts Search Agent. Return JSON only.",
-    "Find 5 highly suitable, traceable, client-safe property recommendations from the broker requirement.",
+    `Find ${targetCount} highly suitable, traceable, client-safe property recommendations from the broker requirement.`,
     "Use live web results when available. Prefer credible listing pages with useful photos. Relevance beats volume.",
     "Each selected property should include exactly 3 image references when possible: hero/exterior, main interior, and another useful angle.",
     "Images must be direct, client-safe image URLs when available. If a direct image URL cannot be verified, return fewer images rather than inventing one.",
@@ -406,7 +417,7 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
         property_category: inferred.category,
         warnings: ["Review these recommendations before sharing with a client."],
       },
-      properties: buildFallbackProperties(requirement),
+      properties: buildFallbackProperties(requirement, targetCount),
     };
   }
 
@@ -427,15 +438,15 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
         property_category: inferred.category,
         warnings: ["Review these recommendations before sharing with a client."],
       },
-      properties: buildFallbackProperties(requirement),
+      properties: buildFallbackProperties(requirement, targetCount),
     };
   }
 
-  const fallbackProperties = buildFallbackProperties(requirement);
-  const normalizedProperties = rawProperties.slice(0, PROPERTY_TARGET_COUNT).map((property, index) =>
+  const fallbackProperties = buildFallbackProperties(requirement, targetCount);
+  const normalizedProperties = rawProperties.slice(0, targetCount).map((property, index) =>
     normalizeAiProperty(property, fallbackProperties[index], index)
   );
-  while (normalizedProperties.length < PROPERTY_TARGET_COUNT) {
+  while (normalizedProperties.length < targetCount) {
     normalizedProperties.push(fallbackProperties[normalizedProperties.length]);
   }
 
@@ -445,8 +456,8 @@ export async function searchProperties(requirement: RequirementRow): Promise<{
   };
 }
 
-export async function persistSearchResults(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow) {
-  const { searchSummary, properties } = await searchProperties(requirement);
+export async function persistSearchResults(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
+  const { searchSummary, properties } = await searchProperties(requirement, propertyTargetCount);
 
   const { error: deleteTraceError } = await supabase
     .from("property_recommendations")
@@ -550,7 +561,7 @@ export async function persistSearchResults(supabase: SupabaseClient, run: RunRow
   return { searchSummary, properties: insertedProperties };
 }
 
-export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow) {
+export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
   const { data: properties, error } = await supabase
     .from("property_recommendations")
     .select("*")
@@ -564,7 +575,10 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
   });
   const clientName = requirement.client_name || "Client";
   const fps = 24;
-  const selectedProperties = sortedProperties.slice(0, PROPERTY_TARGET_COUNT);
+  const targetCount = resolvePropertyTargetCount(propertyTargetCount);
+  const selectedProperties = sortedProperties.slice(0, targetCount);
+  const outroStartSeconds = 10 + selectedProperties.length * 8;
+  const durationSeconds = outroStartSeconds + 10;
   const scenes = [
     { sceneId: "intro-a", type: "introGreeting", startFrame: 0, durationFrames: 4 * fps, onScreenText: `Hi ${clientName}.`, voiceover: "Hi, I have found you some great properties that match what you are looking for." },
     { sceneId: "intro-b", type: "introContext", startFrame: 4 * fps, durationFrames: 6 * fps, onScreenText: "Check out these properties!", voiceover: "If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look." },
@@ -580,8 +594,8 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
         { sceneId: `property-${index + 1}-image-3`, type: "propertyImage", startFrame: sectionStart + 136, durationFrames: 56, propertyId: property.id, imageId: imageIds[2], onScreenText: property.price_label, voiceover: null },
       ];
     }),
-    { sceneId: "outro-pdf", type: "outroPdf", startFrame: 50 * fps, durationFrames: 4 * fps, onScreenText: "Check out the PDF for the full property details!", voiceover: "I have also sent you a PDF with the full details of all the properties shown here." },
-    { sceneId: "outro-close", type: "outroClosing", startFrame: 54 * fps, durationFrames: 6 * fps, onScreenText: "Call me.", voiceover: "Let me know which one stands out to you, and I will take care of the next steps for you." },
+    { sceneId: "outro-pdf", type: "outroPdf", startFrame: outroStartSeconds * fps, durationFrames: 4 * fps, onScreenText: "Check out the PDF for the full property details!", voiceover: "I have also sent you a PDF with the full details of all the properties shown here." },
+    { sceneId: "outro-close", type: "outroClosing", startFrame: (outroStartSeconds + 4) * fps, durationFrames: 6 * fps, onScreenText: "Call me.", voiceover: "Let me know which one stands out to you, and I will take care of the next steps for you." },
   ];
   const voiceoverScript = {
     intro: "Hi, I have found you some great properties that match what you are looking for. If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look.",
@@ -593,7 +607,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
     outroClosing: "Let me know which one stands out to you, and I will take care of the next steps for you.",
   };
   const plan = {
-    durationSeconds: 60,
+    durationSeconds,
     fps,
     format: "vertical",
     resolution: { width: 720, height: 1280 },
@@ -615,7 +629,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       video_plan_json: plan,
       voiceover_script_json: voiceoverScript,
       input_json: { clientName, properties: selectedProperties },
-      duration_seconds: 60,
+      duration_seconds: durationSeconds,
       fps,
       format: "vertical",
       status: "processing",
@@ -683,12 +697,8 @@ export async function enqueueVideoRender(supabase: SupabaseClient, videoId: stri
   }
 }
 
-function escapePdfText(value: string) {
-  return value.replace(/[\\()]/g, "\\$&").replace(/\r?\n/g, " ");
-}
-
 function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
-  const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const words = pdfSafeText(value).replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   const lines: string[] = [];
   let current = "";
 
@@ -706,14 +716,16 @@ function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
-function pdfText(value: unknown, x: number, y: number, size: number, options: { font?: "F1" | "F2"; color?: string } = {}) {
-  const font = options.font || "F1";
-  const color = options.color || "0 0 0";
-  return `${color} rg BT /${font} ${size} Tf ${x} ${y} Td (${escapePdfText(String(value || ""))}) Tj ET`;
-}
-
-function pdfTextBlock(lines: string[], x: number, y: number, size: number, leading = 18, options: { font?: "F1" | "F2"; color?: string } = {}) {
-  return lines.map((line, index) => pdfText(line, x, y - index * leading, size, options)).join("\n");
+function pdfSafeText(value: unknown) {
+  return String(value || "")
+    .replace(/₹/g, "INR ")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/·/g, "/")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function imageRefs(value: unknown): string[] {
@@ -728,113 +740,222 @@ function imageRefs(value: unknown): string[] {
     .slice(0, PROPERTY_IMAGES_PER_OPTION);
 }
 
-function buildPdfCover(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
-  const intro = [
-    "A curated shortlist prepared from the captured client brief.",
-    "Client-facing details only. Internal source trace is kept out of this report.",
-  ];
-  return [
-    "0.95 0.95 0.94 rg 0 0 612 792 re f",
-    "1 1 1 rg 42 58 528 676 re f",
-    "0 0 0 rg 58 704 20 20 re f",
-    pdfText("propshorts", 90, 708, 18, { font: "F2" }),
-    pdfText("RECOMMENDATION REPORT", 58, 638, 12, { font: "F2", color: "0.55 0.55 0.55" }),
-    pdfTextBlock(wrapPdfText(title, 18, 3), 58, 580, 46, 50, { font: "F2" }),
-    pdfText(`Prepared for ${clientName}`, 58, 392, 18, { color: "0.38 0.38 0.38" }),
-    pdfTextBlock(intro, 58, 350, 13, 18, { color: "0.35 0.35 0.35" }),
-    "0 0 0 rg 58 238 496 1 re f",
-    pdfText(`${properties.length} selected properties`, 58, 204, 18, { font: "F2" }),
-    pdfText("PDF + PropShort video package", 58, 174, 13, { color: "0.35 0.35 0.35" }),
-    "0 0 0 rg 58 86 496 8 re f",
-  ].join("\n");
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.slice(index, index + 0x8000));
+  }
+  return btoa(binary);
 }
 
-function buildPdfPropertyPage(property: Record<string, unknown>, index: number) {
-  const title = String(property.title || `Property ${index + 1}`);
-  const location = [property.area, property.city].filter(Boolean).join(", ") || "Location on request";
-  const metricLine = [
+function professionalImageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("images.unsplash.com")) {
+      parsed.searchParams.set("auto", "format");
+      parsed.searchParams.set("fit", "crop");
+      parsed.searchParams.set("fm", "jpg");
+      parsed.searchParams.set("w", "1200");
+      parsed.searchParams.set("q", "76");
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+async function fetchImageBytes(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(professionalImageUrl(url), {
+      signal: controller.signal,
+      headers: { Accept: "image/jpeg,image/png,image/*", "User-Agent": "PropShorts/1.0" },
+    });
+    if (!response.ok) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isJpg(bytes: Uint8Array) {
+  return bytes[0] === 0xff && bytes[1] === 0xd8;
+}
+
+function isPng(bytes: Uint8Array) {
+  return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+}
+
+async function embedImage(pdfDoc: PDFDocument, bytes: Uint8Array | null) {
+  if (!bytes) return null;
+  try {
+    if (isJpg(bytes)) return await pdfDoc.embedJpg(bytes);
+    if (isPng(bytes)) return await pdfDoc.embedPng(bytes);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function embedImageFromUrl(pdfDoc: PDFDocument, url: string) {
+  return embedImage(pdfDoc, await fetchImageBytes(url));
+}
+
+function drawBrandFallback(page: ReturnType<PDFDocument["addPage"]>, boldFont: Awaited<ReturnType<PDFDocument["embedFont"]>>, x = 58, y = 714) {
+  page.drawRectangle({ x, y: y - 2, width: 18, height: 18, color: rgb(0, 0, 0) });
+  page.drawText("propshorts", { x: x + 28, y, size: 15, font: boldFont, color: rgb(0, 0, 0) });
+}
+
+function drawTextLines(
+  page: ReturnType<PDFDocument["addPage"]>,
+  lines: string[],
+  x: number,
+  y: number,
+  size: number,
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
+  options: { color?: ReturnType<typeof rgb>; leading?: number } = {},
+) {
+  const leading = options.leading ?? size * 1.22;
+  lines.forEach((line, index) => {
+    page.drawText(pdfSafeText(line), {
+      x,
+      y: y - index * leading,
+      size,
+      font,
+      color: options.color ?? rgb(0, 0, 0),
+    });
+  });
+}
+
+function drawImageFrame(page: ReturnType<PDFDocument["addPage"]>, image: PDFImage | null, x: number, y: number, width: number, height: number) {
+  page.drawRectangle({ x, y, width, height, color: rgb(0.95, 0.95, 0.94) });
+  if (!image) {
+    page.drawRectangle({ x: x + 10, y: y + 10, width: width - 20, height: height - 20, color: rgb(0.78, 0.80, 0.49) });
+    return;
+  }
+
+  const scale = Math.min(width / image.width, height / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  page.drawImage(image, {
+    x: x + (width - drawWidth) / 2,
+    y: y + (height - drawHeight) / 2,
+    width: drawWidth,
+    height: drawHeight,
+  });
+}
+
+async function embedPropertyImageSet(pdfDoc: PDFDocument, property: Record<string, unknown>) {
+  const urls = imageRefs(property.images);
+  return Promise.all(urls.map((url) => embedImageFromUrl(pdfDoc, url)));
+}
+
+function propertyMetaLine(property: Record<string, unknown>) {
+  return [
     property.price_label,
     typeof property.bedrooms === "number" ? `${property.bedrooms} bed` : null,
+    typeof property.bathrooms === "number" ? `${property.bathrooms} bath` : null,
     property.size_label || (typeof property.sqft === "number" ? `${property.sqft} sqft` : null),
-  ].filter(Boolean).join(" · ") || "Details on request";
+  ].filter(Boolean).map(pdfSafeText).join("  /  ") || "Details on request";
+}
+
+async function drawPdfCover(
+  pdfDoc: PDFDocument,
+  title: string,
+  clientName: string,
+  properties: Array<Record<string, unknown>>,
+  logo: PDFImage | null,
+  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
+) {
+  const page = pdfDoc.addPage([612, 792]);
+  const heroImages = await Promise.all(properties.slice(0, 3).map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
+
+  page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
+  page.drawRectangle({ x: 42, y: 44, width: 528, height: 704, color: rgb(1, 1, 1) });
+  if (logo) page.drawImage(logo, { x: 58, y: 696, width: 96, height: 42 });
+  else drawBrandFallback(page, fonts.bold, 58, 714);
+
+  page.drawText("RECOMMENDATION REPORT", { x: 58, y: 638, size: 11, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
+  drawTextLines(page, wrapPdfText(title, 19, 3), 58, 588, 42, fonts.bold, { leading: 45 });
+  page.drawText(pdfSafeText(`Prepared for ${clientName}`), { x: 58, y: 385, size: 17, font: fonts.regular, color: rgb(0.38, 0.38, 0.37) });
+  drawTextLines(page, [
+    "A broker-ready shortlist built from the captured client brief.",
+    "Photos, pricing cues, fit notes, and next-step context are formatted for client sharing.",
+  ], 58, 348, 12, fonts.regular, { color: rgb(0.32, 0.32, 0.31), leading: 18 });
+
+  page.drawRectangle({ x: 58, y: 258, width: 496, height: 1, color: rgb(0, 0, 0) });
+  page.drawText(`${properties.length} selected properties`, { x: 58, y: 224, size: 18, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText("PropShort video + PDF handoff", { x: 58, y: 198, size: 12, font: fonts.regular, color: rgb(0.36, 0.36, 0.34) });
+
+  heroImages.forEach((image, index) => {
+    drawImageFrame(page, image, 58 + index * 168, 92, 156, 86);
+  });
+  page.drawRectangle({ x: 58, y: 72, width: 496, height: 8, color: rgb(0, 0, 0) });
+}
+
+function drawPdfPropertyPage(
+  pdfDoc: PDFDocument,
+  property: Record<string, unknown>,
+  propertyImages: Array<PDFImage | null>,
+  index: number,
+  logo: PDFImage | null,
+  fonts: { regular: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
+) {
+  const title = String(property.title || `Property ${index + 1}`);
+  const location = [property.area, property.city].filter(Boolean).join(", ") || "Location on request";
   const highlights = Array.isArray(property.highlights)
     ? property.highlights.filter((item): item is string => typeof item === "string").slice(0, 4)
     : [];
-  const images = imageRefs(property.images);
-  const imageLines = images.length > 0
-    ? images.map((url, imageIndex) => `Image ${imageIndex + 1}: ${url}`)
-    : ["Image references unavailable for this listing."];
 
-  return [
-    "0.95 0.95 0.94 rg 0 0 612 792 re f",
-    "1 1 1 rg 42 44 528 704 re f",
-    pdfText(`PROPERTY ${index + 1}`, 58, 704, 11, { font: "F2", color: "0.55 0.55 0.55" }),
-    pdfTextBlock(wrapPdfText(title, 24, 2), 58, 658, 30, 34, { font: "F2" }),
-    pdfText(location, 58, 586, 14, { color: "0.38 0.38 0.38" }),
-    "0 0 0 rg 58 548 340 46 re f",
-    pdfText(metricLine, 76, 564, 13, { font: "F2", color: "1 1 1" }),
-    "0.96 0.96 0.96 rg 58 392 496 112 re f",
-    pdfText("Why this fits", 76, 474, 11, { font: "F2", color: "0.55 0.55 0.55" }),
-    pdfTextBlock(wrapPdfText(property.headline || property.description || "A strong fit for the captured brief.", 56, 3), 76, 444, 17, 22, { font: "F2" }),
-    pdfText("Highlights", 58, 344, 11, { font: "F2", color: "0.55 0.55 0.55" }),
-    ...highlights.map((highlight, highlightIndex) => [
-      "0 0 0 rg",
-      `64 ${314 - highlightIndex * 28} 7 7 re f`,
-      pdfText(highlight, 84, 310 - highlightIndex * 28, 13, { color: "0.24 0.24 0.24" }),
-    ].join("\n")),
-    pdfText("Image references for video/PDF handoff", 58, 170, 10, { font: "F2", color: "0.55 0.55 0.55" }),
-    pdfTextBlock(imageLines.flatMap((line) => wrapPdfText(line, 74, 2)).slice(0, 6), 58, 146, 8, 11, { color: "0.24 0.24 0.24" }),
-    "0 0 0 rg 58 72 496 8 re f",
-    pdfText("propshorts", 474, 92, 10, { font: "F2" }),
-  ].join("\n");
+  const page = pdfDoc.addPage([612, 792]);
+  page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(0.95, 0.95, 0.94) });
+  page.drawRectangle({ x: 42, y: 44, width: 528, height: 704, color: rgb(1, 1, 1) });
+  if (logo) page.drawImage(logo, { x: 58, y: 704, width: 76, height: 34 });
+  else drawBrandFallback(page, fonts.bold, 58, 718);
+
+  page.drawText(`PROPERTY ${index + 1}`, { x: 58, y: 660, size: 10, font: fonts.bold, color: rgb(0.58, 0.58, 0.56) });
+  drawTextLines(page, wrapPdfText(title, 25, 2), 58, 622, 28, fonts.bold, { leading: 31 });
+  page.drawText(pdfSafeText(location), { x: 58, y: 552, size: 13, font: fonts.regular, color: rgb(0.38, 0.38, 0.36) });
+  page.drawRectangle({ x: 58, y: 505, width: 360, height: 36, color: rgb(0, 0, 0) });
+  page.drawText(propertyMetaLine(property), { x: 74, y: 517, size: 11, font: fonts.bold, color: rgb(1, 1, 1) });
+
+  drawImageFrame(page, propertyImages[0] || null, 58, 260, 496, 220);
+  drawImageFrame(page, propertyImages[1] || null, 58, 140, 238, 100);
+  drawImageFrame(page, propertyImages[2] || null, 316, 140, 238, 100);
+
+  page.drawRectangle({ x: 58, y: 86, width: 496, height: 36, color: rgb(0.96, 0.96, 0.95) });
+  page.drawText("WHY THIS FITS", { x: 70, y: 108, size: 8, font: fonts.bold, color: rgb(0.48, 0.48, 0.46) });
+  drawTextLines(page, wrapPdfText(property.headline || property.description || "A strong fit for the captured brief.", 70, 2), 154, 108, 10, fonts.bold, { color: rgb(0.08, 0.08, 0.08), leading: 12 });
+
+  page.drawText("HIGHLIGHTS", { x: 58, y: 58, size: 8, font: fonts.bold, color: rgb(0.55, 0.55, 0.53) });
+  highlights.slice(0, 3).forEach((highlight, highlightIndex) => {
+    page.drawRectangle({ x: 150 + highlightIndex * 134, y: 55, width: 6, height: 6, color: rgb(0, 0, 0) });
+    page.drawText(pdfSafeText(highlight).slice(0, 22), { x: 162 + highlightIndex * 134, y: 52, size: 8, font: fonts.regular, color: rgb(0.18, 0.18, 0.17) });
+  });
 }
 
-function buildDesignedPdf(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
-  const pageStreams = [
-    buildPdfCover(title, clientName, properties),
-    ...properties.map((property, index) => buildPdfPropertyPage(property, index)),
-  ];
-  const pageCount = pageStreams.length;
-  const objects: string[] = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    `<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${3 + index} 0 R`).join(" ")}] /Count ${pageCount} >>`,
-  ];
+async function buildDesignedPdf(title: string, clientName: string, properties: Array<Record<string, unknown>>) {
+  const pdfDoc = await PDFDocument.create();
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const logo = await embedImageFromUrl(pdfDoc, BRAND_LOGO_URL);
+  const fonts = { regular, bold };
 
-  const contentStart = 3 + pageCount;
-  for (let index = 0; index < pageCount; index += 1) {
-    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${contentStart + pageCount} 0 R /F2 ${contentStart + pageCount + 1} 0 R >> >> /Contents ${contentStart + index} 0 R >>`);
+  await drawPdfCover(pdfDoc, title, clientName, properties, logo, fonts);
+
+  for (const [index, property] of properties.entries()) {
+    const propertyImages = await embedPropertyImageSet(pdfDoc, property);
+    drawPdfPropertyPage(pdfDoc, property, propertyImages, index, logo, fonts);
   }
 
-  for (const stream of pageStreams) {
-    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-  }
-
-  objects.push(
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
-  );
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(pdf.length);
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  });
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  const bytes = new TextEncoder().encode(pdf);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return `data:application/pdf;base64,${btoa(binary)}`;
+  const bytes = await pdfDoc.save();
+  return `data:application/pdf;base64,${bytesToBase64(bytes)}`;
 }
 
-export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow) {
+export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
   const { data: properties, error } = await supabase
     .from("property_recommendations")
     .select("title,area,city,price_label,bedrooms,sqft,size_label,headline,description,highlights,images,sort_order")
@@ -848,8 +969,9 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
   });
   const clientName = requirement.client_name || "Client";
   const title = `PropShorts Recommendations for ${clientName}`;
-  const pdfProperties = sortedProperties.slice(0, PROPERTY_TARGET_COUNT) as Array<Record<string, unknown>>;
-  const pdfUrl = buildDesignedPdf(title, clientName, pdfProperties);
+  const targetCount = resolvePropertyTargetCount(propertyTargetCount);
+  const pdfProperties = sortedProperties.slice(0, targetCount) as Array<Record<string, unknown>>;
+  const pdfUrl = await buildDesignedPdf(title, clientName, pdfProperties);
 
   const { data, error: insertError } = await supabase
     .from("generated_pdfs")
