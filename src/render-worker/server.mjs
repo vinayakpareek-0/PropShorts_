@@ -12,6 +12,7 @@ const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
 const fps = 24;
+const activeRenders = new Set();
 
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -314,6 +315,22 @@ async function imageDataUri(url) {
   }
 }
 
+async function preloadPropertyImages(properties) {
+  const urls = [
+    ...new Set(
+      properties.flatMap((property) => Array.isArray(property.images) ? property.images.slice(0, 3) : [])
+        .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url)),
+    ),
+  ];
+  const imageMap = new Map();
+
+  await Promise.all(urls.map(async (url) => {
+    imageMap.set(url, await imageDataUri(url));
+  }));
+
+  return imageMap;
+}
+
 function concatFilePath(value) {
   return String(value).replace(/'/g, "'\\''");
 }
@@ -335,6 +352,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientNam
     });
   }
 
+  const imageMap = await preloadPropertyImages(propertyLines);
   const slides = [
     { duration: 4, svg: introGreetingSlide(clientName) },
     { duration: 6, svg: introContextSlide(title) },
@@ -344,7 +362,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, title, clientNam
     slides.push({ duration: 1, svg: propertyNumberSlide(propertyIndex) });
     for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
       const imageUrl = property.images[imageIndex] || property.images[0] || null;
-      const image = await imageDataUri(imageUrl);
+      const image = imageUrl ? imageMap.get(imageUrl) || null : null;
       slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image) });
     }
   }
@@ -459,6 +477,26 @@ async function renderVideo(videoId, accessToken) {
   }
 }
 
+function startRenderJob(videoId, accessToken) {
+  if (activeRenders.has(videoId)) return false;
+
+  activeRenders.add(videoId);
+  setImmediate(() => {
+    renderVideo(videoId, accessToken)
+      .then((videoUrl) => {
+        console.log(`Render job completed for video ${videoId}: ${videoUrl}`);
+      })
+      .catch((error) => {
+        console.error(`Render job failed for video ${videoId}: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        activeRenders.delete(videoId);
+      });
+  });
+
+  return true;
+}
+
 const server = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
@@ -486,13 +524,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    console.log(`Received render request for video ${videoId}`);
-    const videoUrl = await renderVideo(videoId, accessToken);
-    json(res, 200, {
+    const started = startRenderJob(videoId, accessToken);
+    console.log(`${started ? "Queued" : "Skipped duplicate"} render request for video ${videoId}`);
+    json(res, 202, {
       success: true,
       video_id: videoId,
-      status: "completed",
-      video_url: videoUrl,
+      status: started ? "processing" : "already_processing",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

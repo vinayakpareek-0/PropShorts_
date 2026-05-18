@@ -78,6 +78,27 @@ export default function PropshortViewerClient({ propshortId }: PropshortViewerCl
   }, [propshortId]);
 
   const video = pkg?.generated_videos;
+  const shouldPollRender = video?.status === "processing";
+
+  useEffect(() => {
+    if (!shouldPollRender) return;
+
+    let cancelled = false;
+    const interval = window.setInterval(async () => {
+      try {
+        const row = await fetchPackageByVideoId(propshortId);
+        if (!cancelled) setPkg(row);
+      } catch (pollError) {
+        console.warn(pollError);
+      }
+    }, 6000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [propshortId, shouldPollRender]);
+
   const clientName = pkg?.client_requirements?.client_name || "Client";
   const title = pkg?.package_title || `PropShort for ${clientName}`;
   const properties = previewProperties(video?.input_json);
