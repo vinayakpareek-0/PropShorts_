@@ -96,6 +96,7 @@ export default function ProcessingPageClient() {
   const searchParams = useSearchParams();
   const requirementId = searchParams.get("requirementId");
   const propertyCount = searchParams.get("propertyCount") === "5" ? "5" : "3";
+  const demoMode = searchParams.get("demo") === "1";
   const started = useRef(false);
 
   const [steps, setSteps] = useState<Step[]>(initialSteps);
@@ -155,7 +156,11 @@ export default function ProcessingPageClient() {
         setStepStatus("start", "done");
 
         setStepStatus("search", "running");
-        await invokeStep("run-property-search", { run_id: runId, property_count: propertyCount });
+        await invokeStep("run-property-search", {
+          run_id: runId,
+          property_count: propertyCount,
+          demo_mode: demoMode ? "true" : "false",
+        });
         setStepStatus("search", "done");
 
         setStepStatus("video", "running");
@@ -191,7 +196,7 @@ export default function ProcessingPageClient() {
     }
 
     runPipeline();
-  }, [propertyCount, requirementId, router]);
+  }, [demoMode, propertyCount, requirementId, router]);
 
   const statusCopy = error || activeStepCopy(steps);
 

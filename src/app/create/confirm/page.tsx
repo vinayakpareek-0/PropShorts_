@@ -97,7 +97,7 @@ export default function CreateConfirmPage() {
   const [refined, setRefined] = useState<RefinedRequirement | null>(null);
   const [loading, setLoading] = useState(true);
   const [parsing, setParsing] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generatingMode, setGeneratingMode] = useState<"live" | "demo" | null>(null);
   const [propertyCount, setPropertyCount] = useState<3 | 5>(3);
   const [error, setError] = useState("");
 
@@ -175,14 +175,14 @@ export default function CreateConfirmPage() {
     };
   }, []);
 
-  const canContinue = Boolean(requirement && refined && !loading && !parsing && !generating && !error);
+  const canContinue = Boolean(requirement && refined && !loading && !parsing && !generatingMode && !error);
 
-  async function handleGenerate() {
-    if (!requirement || generating) return;
+  async function handleGenerate(demoMode = false) {
+    if (!requirement || generatingMode) return;
 
-    setGenerating(true);
+    setGeneratingMode(demoMode ? "demo" : "live");
     setError("");
-    router.push(`/create/processing/new?requirementId=${encodeURIComponent(requirement.id)}&propertyCount=${propertyCount}`);
+    router.push(`/create/processing/new?requirementId=${encodeURIComponent(requirement.id)}&propertyCount=${propertyCount}${demoMode ? "&demo=1" : ""}`);
   }
 
   return (
@@ -300,31 +300,41 @@ export default function CreateConfirmPage() {
 
         <div className="flex flex-col items-center gap-6">
           {requirement && refined && !loading && !parsing && !error ? (
-            <button
-              type="button"
-              onClick={handleGenerate}
-              aria-label="Confirm and generate"
-              className="flex items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ width: CHECK_BTN_SIZE, height: CHECK_BTN_SIZE }}
-              disabled={!canContinue}
-            >
-              {generating ? (
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  style={{ width: CHECK_BTN_SIZE * 0.45, height: CHECK_BTN_SIZE * 0.45 }}
-                >
-                  <path d="M5 13l4 4L19 7" />
-                </svg>
-              )}
-            </button>
+            <div className="flex flex-col items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleGenerate(false)}
+                aria-label="Confirm and generate"
+                className="flex items-center justify-center rounded-full bg-black text-white transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ width: CHECK_BTN_SIZE, height: CHECK_BTN_SIZE }}
+                disabled={!canContinue}
+              >
+                {generatingMode === "live" ? (
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    style={{ width: CHECK_BTN_SIZE * 0.45, height: CHECK_BTN_SIZE * 0.45 }}
+                  >
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerate(true)}
+                disabled={!canContinue}
+                className="rounded-full bg-[#d2d47a] px-5 py-3 text-[13px] font-semibold text-black transition hover:bg-[#c6c969] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {generatingMode === "demo" ? "Starting demo..." : "Generate Demo Package"}
+              </button>
+            </div>
           ) : null}
 
           <Link

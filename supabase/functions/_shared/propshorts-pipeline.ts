@@ -67,6 +67,10 @@ interface PropertyCandidate {
   };
 }
 
+interface SearchOptions {
+  demoMode?: boolean;
+}
+
 const PROPERTY_MAX_COUNT = 5;
 const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
@@ -75,6 +79,34 @@ const SEARCH_CANDIDATE_POOL_SIZE = 24;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 const PDF_BUCKET = "generated-pdfs";
 const CLIENT_SAFE_FALLBACK_WARNING = "Live property search could not return enough verified listings. Regenerate before sending to a client.";
+
+const demoImageSets = [
+  [
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1400&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1400&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1605276374104-dee2a0ed3cd6?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600566752355-35792bedcfea?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1400&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1598228723793-52759bba239c?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600566753151-384129cf4e3e?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607688066-890987f18a86?auto=format&fit=crop&w=1400&q=82",
+  ],
+  [
+    "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600607687644-c7171b42498b?auto=format&fit=crop&w=1400&q=82",
+    "https://images.unsplash.com/photo-1600566752447-f4a4a7c88d38?auto=format&fit=crop&w=1400&q=82",
+  ],
+];
 
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -289,6 +321,73 @@ function buildFallbackProperties(requirement: RequirementRow, propertyTargetCoun
   });
 }
 
+function buildDemoProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): PropertyCandidate[] {
+  const inferred = inferRequirement(requirement);
+  const targetCount = resolvePropertyTargetCount(propertyTargetCount);
+  const city = inferred.city || "Jaipur";
+  const demoAreas = ["Vaishali Nagar", "Mansarovar", "Ajmer Road", "Nirman Nagar", "Jagatpura"];
+  const demoTitles = [
+    `Skyline ${inferred.bedrooms || 2} BHK Residence`,
+    "Park View Apartment",
+    "Modern Family Flat",
+    "Sunlit Corner Home",
+    "Quiet Lifestyle Apartment",
+  ];
+  const demoPrices = [42000, 38500, 46000, 41000, 39500];
+
+  return Array.from({ length: targetCount }, (_, index) => {
+    const area = demoAreas[index] || inferred.area || city;
+    const price = inferred.rentOrBuy === "rent"
+      ? demoPrices[index] ?? demoPrices[0]
+      : 75_00_000 + index * 4_50_000;
+    const title = `${demoTitles[index] || "Selected Property"} in ${area}`;
+    const images = demoImageSets[index % demoImageSets.length].map((url, imageIndex) => ({
+      id: `demo-${index + 1}-${imageIndex + 1}`,
+      url,
+      alt: `${title} image ${imageIndex + 1}`,
+      role: imageIndex === 0 ? "hero" : imageIndex === 1 ? "interior" : "detail",
+    }));
+
+    return {
+      external_property_id: `demo-${index + 1}`,
+      title,
+      area,
+      city,
+      property_category: inferred.category,
+      property_type: inferred.propertyType || "Apartment",
+      rent_or_buy: inferred.rentOrBuy,
+      price,
+      price_label: inferred.rentOrBuy === "rent"
+        ? `INR ${price.toLocaleString("en-IN")}/month`
+        : `INR ${price.toLocaleString("en-IN")}`,
+      currency: inferred.currency,
+      bedrooms: inferred.bedrooms || 2,
+      bathrooms: inferred.bathrooms || 2,
+      sqft: (inferred.sqftMin || 950) + index * 80,
+      size_label: `${(inferred.sqftMin || 950) + index * 80} sqft`,
+      headline: index === 0 ? "Strongest overall fit" : index === 1 ? "Best value in the shortlist" : index === 2 ? "Great lifestyle fit" : index === 3 ? "Quiet, practical everyday option" : "Reliable backup option",
+      description: `A polished ${inferred.propertyType || "apartment"} option in ${area}, ${city}, selected to match the client brief for location, budget, daily convenience, and move-in comfort.`,
+      highlights: [
+        "Image-backed showcase ready",
+        "Budget and location aligned",
+        "Good everyday connectivity",
+        index === 0 ? "Closest fit to the brief" : index === 1 ? "Strong value angle" : "Worth a private viewing",
+      ],
+      images,
+      sort_order: index + 1,
+      trace: {
+        source_url: null,
+        platform: "PropShorts demo",
+        listing_id: `DEMO-${index + 1}`,
+        agent_name: null,
+        agent_phone: null,
+        agent_email: null,
+        internal_notes: "Demo package generated with controlled presentation images for sales walkthroughs.",
+      },
+    };
+  });
+}
+
 function parseJsonObject(text: string): Record<string, unknown> | null {
   const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   try {
@@ -361,6 +460,55 @@ function uniqueImageUrls(urls: string[]) {
   });
 }
 
+function isHtmlLike(bytes: Uint8Array) {
+  const sample = new TextDecoder().decode(bytes.slice(0, 96)).toLowerCase().trimStart();
+  return sample.startsWith("<!doctype") || sample.startsWith("<html") || sample.includes("<body");
+}
+
+async function probeImageUrl(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5500);
+  try {
+    const response = await fetch(professionalImageUrl(url), {
+      signal: controller.signal,
+      headers: {
+        Accept: "image/avif,image/webp,image/jpeg,image/png,image/*,*/*;q=0.4",
+        Range: "bytes=0-4095",
+        "User-Agent": "Mozilla/5.0 PropShorts/1.0 (+https://propshorts.netlify.app)",
+      },
+    });
+    if (!response.ok) return null;
+    return {
+      contentType: response.headers.get("content-type")?.toLowerCase() || "",
+      bytes: new Uint8Array(await response.arrayBuffer()),
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function isVerifiedPropertyImageUrl(url: string) {
+  const normalized = normalizeUrl(url);
+  if (!normalized || isGenericFallbackImage(normalized) || !isProbablyListingImage(normalized)) return false;
+
+  const probe = await probeImageUrl(normalized);
+  if (!probe || probe.bytes.length < 8 || isHtmlLike(probe.bytes)) return false;
+  if (probe.contentType.includes("html") || probe.contentType.includes("text/plain")) return false;
+  if (isJpg(probe.bytes) || isPng(probe.bytes)) return true;
+  return probe.contentType.startsWith("image/");
+}
+
+async function filterVerifiedPropertyImages(images: Array<{ id: string; url: string; alt: string; role: string }>) {
+  const checked = await Promise.all(images.map(async (image) => {
+    const valid = await isVerifiedPropertyImageUrl(image.url);
+    return valid ? image : null;
+  }));
+
+  return checked.filter((image): image is { id: string; url: string; alt: string; role: string } => Boolean(image));
+}
+
 async function extractListingImagesFromSource(sourceUrl: string | null, title: string) {
   if (!sourceUrl) return [];
   const normalizedSource = normalizeUrl(sourceUrl);
@@ -412,7 +560,7 @@ async function extractListingImagesFromSource(sourceUrl: string | null, title: s
       if (imageUrl) candidates.push(imageUrl);
     }
 
-    return uniqueImageUrls(candidates).slice(0, PROPERTY_IMAGES_PER_OPTION).map((url, index) => ({
+    return uniqueImageUrls(candidates).slice(0, 12).map((url, index) => ({
       id: `source-${index + 1}`,
       url,
       alt: `${title} photo ${index + 1}`,
@@ -486,12 +634,16 @@ function normalizeAiProperty(
 }
 
 async function enrichPropertyWithSourceImages(property: PropertyCandidate): Promise<PropertyCandidate> {
-  const directImages = property.images.filter((image) => image.url && !isGenericFallbackImage(image.url));
+  const directImages = await filterVerifiedPropertyImages(
+    property.images.filter((image) => image.url && !isGenericFallbackImage(image.url)),
+  );
   if (directImages.length >= 2) {
     return { ...property, images: directImages.slice(0, PROPERTY_IMAGES_PER_OPTION) };
   }
 
-  const sourceImages = await extractListingImagesFromSource(property.trace.source_url, property.title);
+  const sourceImages = await filterVerifiedPropertyImages(
+    await extractListingImagesFromSource(property.trace.source_url, property.title),
+  );
   if (sourceImages.length > 0) {
     const merged = [...directImages, ...sourceImages].filter((image, index, list) =>
       list.findIndex((candidate) => candidate.url === image.url) === index
@@ -539,6 +691,7 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
     breadthInstruction,
     "Use live web results. Prefer credible active listing pages with useful photos. Relevance beats volume after image availability.",
     "Every final property must have at least 1 real property image. Prefer 3 direct image URLs from the actual listing page: hero/exterior, main interior, and another useful angle.",
+    "Direct image URLs must open as image bytes in a browser or HTTP client. Do not invent .jpg paths from listing titles and do not put listing-page URLs inside images.",
     "Never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
     "If direct image URLs cannot be verified, include the public listing page in trace.source_url so PropShorts can extract images. Do not include image-less properties unless no image-backed listings exist.",
     "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
@@ -580,13 +733,27 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
   };
 }
 
-export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): Promise<{
+export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT, options: SearchOptions = {}): Promise<{
   searchSummary: Record<string, unknown>;
   properties: PropertyCandidate[];
 }> {
   const inferred = inferRequirement(requirement);
   const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const openAiKey = Deno.env.get("OPENAI_API_KEY");
+
+  if (options.demoMode) {
+    return {
+      searchSummary: {
+        interpreted_brief: inferred.note,
+        assumptions: ["Demo mode uses a controlled property shortlist with reliable presentation images."],
+        property_category: inferred.category,
+        demo_mode: true,
+        image_qualified_count: targetCount,
+        warnings: [],
+      },
+      properties: buildDemoProperties(requirement, targetCount),
+    };
+  }
 
   if (!openAiKey) {
     return {
@@ -645,8 +812,8 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
   };
 }
 
-export async function persistSearchResults(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
-  const { searchSummary, properties } = await searchProperties(requirement, propertyTargetCount);
+export async function persistSearchResults(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT, options: SearchOptions = {}) {
+  const { searchSummary, properties } = await searchProperties(requirement, propertyTargetCount, options);
 
   const { error: deleteTraceError } = await supabase
     .from("property_recommendations")
@@ -953,16 +1120,22 @@ function professionalImageUrl(url: string) {
   }
 }
 
-async function fetchImageBytes(url: string) {
+function imageProxyUrl(url: string) {
+  return `https://wsrv.nl/?url=${encodeURIComponent(professionalImageUrl(url))}&output=jpg&w=1200&q=76`;
+}
+
+async function fetchRawImageBytes(url: string, timeoutMs = 9000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 9000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(professionalImageUrl(url), {
+    const response = await fetch(url, {
       signal: controller.signal,
       headers: { Accept: "image/jpeg,image/png,image/*", "User-Agent": "PropShorts/1.0" },
     });
     if (!response.ok) return null;
-    return new Uint8Array(await response.arrayBuffer());
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length < 8 || isHtmlLike(bytes)) return null;
+    return bytes;
   } catch {
     return null;
   } finally {
@@ -976,6 +1149,16 @@ function isJpg(bytes: Uint8Array) {
 
 function isPng(bytes: Uint8Array) {
   return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+}
+
+async function fetchImageBytes(url: string) {
+  if (!url) return null;
+  const direct = await fetchRawImageBytes(professionalImageUrl(url));
+  if (direct && (isJpg(direct) || isPng(direct))) return direct;
+
+  const proxied = await fetchRawImageBytes(imageProxyUrl(url), 12000);
+  if (proxied && (isJpg(proxied) || isPng(proxied))) return proxied;
+  return direct;
 }
 
 async function embedImage(pdfDoc: PDFDocument, bytes: Uint8Array | null) {
@@ -1042,6 +1225,68 @@ function drawTextLines(
       color: options.color ?? rgb(0, 0, 0),
     });
   });
+}
+
+function drawPdfIcon(page: PdfPage, icon: string, x: number, y: number, size = 12, color: ReturnType<typeof rgb> = PDF_GREEN) {
+  const left = x;
+  const bottom = y;
+  const midX = x + size / 2;
+  const midY = y + size / 2;
+  const right = x + size;
+  const top = y + size;
+
+  if (icon === "bed") {
+    page.drawRectangle({ x: left, y: bottom + 2, width: size, height: size * 0.45, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left, y: bottom + 2 }, end: { x: left, y: top }, thickness: 1, color });
+    page.drawRectangle({ x: left + 2, y: bottom + size * 0.48, width: size * 0.28, height: size * 0.2, borderColor: color, borderWidth: 0.8 });
+    return;
+  }
+  if (icon === "bath") {
+    page.drawRectangle({ x: left + 1, y: bottom + 2, width: size - 2, height: size * 0.42, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left + 3, y: top - 2 }, end: { x: right - 2, y: top - 2 }, thickness: 1, color });
+    page.drawCircle({ x: right - 2, y: top - 2, size: 1.4, color });
+    return;
+  }
+  if (icon === "size") {
+    page.drawRectangle({ x: left + 2, y: bottom + 2, width: size - 4, height: size - 4, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left + 2, y: bottom + 4 }, end: { x: left + 5, y: bottom + 4 }, thickness: 1, color });
+    page.drawLine({ start: { x: right - 2, y: top - 4 }, end: { x: right - 5, y: top - 4 }, thickness: 1, color });
+    return;
+  }
+  if (icon === "home") {
+    page.drawLine({ start: { x: left + 1, y: bottom + 5 }, end: { x: midX, y: top - 1 }, thickness: 1.2, color });
+    page.drawLine({ start: { x: midX, y: top - 1 }, end: { x: right - 1, y: bottom + 5 }, thickness: 1.2, color });
+    page.drawRectangle({ x: left + 3, y: bottom + 1, width: size - 6, height: size * 0.48, borderColor: color, borderWidth: 1 });
+    return;
+  }
+  if (icon === "phone") {
+    page.drawCircle({ x: midX, y: midY, size: size / 2, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left + 4, y: top - 4 }, end: { x: right - 4, y: bottom + 4 }, thickness: 1.2, color });
+    return;
+  }
+  if (icon === "mail") {
+    page.drawRectangle({ x: left + 1, y: bottom + 2, width: size - 2, height: size - 4, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left + 1, y: top - 2 }, end: { x: midX, y: midY - 1 }, thickness: 1, color });
+    page.drawLine({ start: { x: right - 1, y: top - 2 }, end: { x: midX, y: midY - 1 }, thickness: 1, color });
+    return;
+  }
+  if (icon === "web") {
+    page.drawCircle({ x: midX, y: midY, size: size / 2, borderColor: color, borderWidth: 1 });
+    page.drawLine({ start: { x: left + 1, y: midY }, end: { x: right - 1, y: midY }, thickness: 0.9, color });
+    page.drawLine({ start: { x: midX, y: bottom + 1 }, end: { x: midX, y: top - 1 }, thickness: 0.9, color });
+    return;
+  }
+  if (icon === "star") {
+    page.drawText("*", { x: left + 1, y: bottom - 4, size: size + 8, color });
+    return;
+  }
+  if (icon === "check") {
+    page.drawLine({ start: { x: left + 2, y: midY }, end: { x: left + 5, y: bottom + 3 }, thickness: 1.6, color });
+    page.drawLine({ start: { x: left + 5, y: bottom + 3 }, end: { x: right - 2, y: top - 2 }, thickness: 1.6, color });
+    return;
+  }
+
+  page.drawCircle({ x: midX, y: midY, size: size / 2, borderColor: color, borderWidth: 1 });
 }
 
 function drawImageFrame(page: PdfPage, image: PDFImage | null, x: number, y: number, width: number, height: number, mode: "cover" | "contain" = "cover") {
@@ -1177,8 +1422,8 @@ async function drawCoverPage(pdfDoc: PDFDocument, context: PdfContext) {
   page.drawLine({ start: { x: 330, y: 110 }, end: { x: 330, y: 160 }, thickness: 0.7, color: PDF_BORDER });
   const contacts = [broker?.phone, broker?.email, broker?.website_url].filter(Boolean).slice(0, 3);
   contacts.forEach((item, index) => {
-    page.drawText(["CALL", "MAIL", "WEB"][index], { x: 360, y: 151 - index * 24, size: 7, font: fonts.bold, color: PDF_GREEN });
-    page.drawText(pdfSafeText(item), { x: 397, y: 151 - index * 24, size: 10, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
+    drawPdfIcon(page, ["phone", "mail", "web"][index], 360, 145 - index * 24, 12, PDF_GREEN);
+    page.drawText(pdfSafeText(item), { x: 382, y: 148 - index * 24, size: 10, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
   });
   page.drawLine({ start: { x: 26, y: 70 }, end: { x: A4_WIDTH - 26, y: 70 }, thickness: 0.7, color: PDF_BORDER });
   page.drawText("Report Date", { x: 28, y: 40, size: 9, font: fonts.regular, color: PDF_GRAY });
@@ -1202,7 +1447,8 @@ function drawSummaryPage(context: PdfContext) {
     const x = 318 + col * 126;
     const y = 636 - row * 48;
     page.drawRectangle({ x, y, width: 116, height: 34, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
-    page.drawText(pdfSafeText(item).slice(0, 22), { x: x + 14, y: y + 12, size: 9, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
+    drawPdfIcon(page, index === 0 ? "bed" : index === 1 ? "bath" : index === 2 ? "home" : index === 3 ? "star" : "check", x + 12, y + 11, 12, PDF_GREEN);
+    page.drawText(pdfSafeText(item).slice(0, 18), { x: x + 34, y: y + 12, size: 8.7, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
   });
 
   page.drawText(`WHY THESE ${properties.length} PROPERTIES?`, { x: 36, y: 470, size: 11, font: fonts.bold, color: rgb(0, 0, 0) });
@@ -1213,7 +1459,7 @@ function drawSummaryPage(context: PdfContext) {
   ].forEach(([title, body], index) => {
     const y = 400 - index * 82;
     page.drawRectangle({ x: 36, y, width: 42, height: 42, color: PDF_GREEN });
-    page.drawText(String(index + 1), { x: 54, y: y + 14, size: 16, font: fonts.bold, color: rgb(1, 1, 1) });
+    drawPdfIcon(page, index === 0 ? "star" : index === 1 ? "check" : "size", 50, y + 13, 14, rgb(0.92, 0.72, 0.25));
     page.drawText(title, { x: 96, y: y + 28, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
     drawTextLines(page, wrapPdfText(body, 42, 2), 96, y + 10, 9.5, fonts.regular, { color: rgb(0.2, 0.2, 0.2), leading: 13 });
     if (index < 2) page.drawLine({ start: { x: 36, y: y - 22 }, end: { x: 280, y: y - 22 }, thickness: 0.7, color: PDF_BORDER });
@@ -1237,7 +1483,7 @@ function drawSummaryPage(context: PdfContext) {
 
   page.drawRectangle({ x: 36, y: 88, width: A4_WIDTH - 72, height: 58, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
   page.drawCircle({ x: 74, y: 117, size: 14, color: PDF_LIGHT_GREEN });
-  page.drawText("OK", { x: 68, y: 113, size: 7, font: fonts.bold, color: PDF_GREEN });
+  drawPdfIcon(page, "check", 67, 110, 14, PDF_GREEN);
   page.drawText("All properties are ready for your review.", { x: 106, y: 112, size: 12, font: fonts.bold, color: rgb(0, 0, 0) });
   drawFooter(page, logo, fonts, 2);
 }
@@ -1263,11 +1509,12 @@ async function drawOverviewPage(context: PdfContext) {
     page.drawCircle({ x: x + 22, y: y + h - 24, size: 13, color: rgb(0, 0, 0) });
     page.drawText(String(index + 1), { x: x + 18, y: y + h - 29, size: 13, font: fonts.bold, color: rgb(1, 1, 1) });
     const tx = x + (isWide ? 255 : 152);
-    page.drawText(propertyTitle(property, index).slice(0, isWide ? 30 : 18), { x: tx, y: y + h - 38, size: 10.5, font: fonts.bold, color: rgb(0, 0, 0) });
+    drawTextLines(page, wrapPdfText(propertyTitle(property, index), isWide ? 28 : 18, 2), tx, y + h - 34, 10.5, fonts.bold, { leading: 12 });
     page.drawText(propertyLocation(property).slice(0, 25), { x: tx, y: y + h - 56, size: 8.5, font: fonts.regular, color: rgb(0, 0, 0) });
     const specs = propertySpecs(property).slice(0, 3);
     specs.forEach((spec, specIndex) => {
-      page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx, y: y + h - 84 - specIndex * 16, size: 8.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+      drawPdfIcon(page, spec.label === "BEDROOMS" ? "bed" : spec.label === "BATHROOMS" ? "bath" : spec.label === "SQFT" || spec.label === "SIZE" ? "size" : "home", tx, y + h - 89 - specIndex * 16, 9, PDF_GREEN);
+      page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx + 16, y: y + h - 84 - specIndex * 16, size: 8.3, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
     });
     page.drawText(pdfSafeText(property.price_label || "Price on request"), { x: tx, y: y + 30, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
     page.drawRectangle({ x: x + w - 90, y: y + 14, width: 70, height: 42, color: PDF_SOFT });
@@ -1292,8 +1539,9 @@ function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: Pd
   const width = 520 / Math.max(1, specs.length);
   specs.forEach((spec, index) => {
     const x = 40 + index * width;
-    page.drawText(spec.value, { x: x + 20, y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
-    page.drawText(spec.label, { x: x + 20, y: y - 14, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+    drawPdfIcon(page, spec.label === "BEDROOMS" ? "bed" : spec.label === "BATHROOMS" ? "bath" : spec.label === "SQFT" || spec.label === "SIZE" ? "size" : "home", x + 4, y - 2, 13, PDF_GREEN);
+    page.drawText(spec.value, { x: x + 24, y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+    page.drawText(spec.label, { x: x + 24, y: y - 14, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
     if (index > 0) page.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 24 }, thickness: 0.5, color: PDF_BORDER });
   });
 }
@@ -1307,23 +1555,24 @@ async function drawPropertyDetailPage(context: PdfContext, property: Record<stri
   page.drawLine({ start: { x: 36, y: 760 }, end: { x: A4_WIDTH - 36, y: 760 }, thickness: 0.7, color: PDF_BORDER });
   page.drawText("PROPERTY DETAIL", { x: 36, y: 730, size: 10, font: fonts.bold, color: PDF_GREEN });
   page.drawText(`PROPERTY ${index + 1} OF ${properties.length}`, { x: 36, y: 706, size: 8, font: fonts.bold, color: PDF_GRAY });
-  page.drawText(propertyTitle(property, index).slice(0, 42), { x: 36, y: 668, size: 24, font: fonts.regular, color: rgb(0, 0, 0) });
+  drawTextLines(page, wrapPdfText(propertyTitle(property, index), 30, 2), 36, 670, 22, fonts.regular, { leading: 26 });
+  const badgeY = 612;
   if (index === 0) {
-    page.drawRectangle({ x: 310, y: 664, width: 64, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
-    page.drawText("TOP PICK", { x: 320, y: 669, size: 8, font: fonts.bold, color: PDF_GREEN });
+    page.drawRectangle({ x: 36, y: badgeY, width: 64, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
+    page.drawText("TOP PICK", { x: 46, y: badgeY + 5, size: 8, font: fonts.bold, color: PDF_GREEN });
   } else if (index === 1) {
-    page.drawRectangle({ x: 310, y: 664, width: 72, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
-    page.drawText("BEST VALUE", { x: 319, y: 669, size: 8, font: fonts.bold, color: PDF_GREEN });
+    page.drawRectangle({ x: 36, y: badgeY, width: 72, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
+    page.drawText("BEST VALUE", { x: 45, y: badgeY + 5, size: 8, font: fonts.bold, color: PDF_GREEN });
   }
   page.drawText(`${matchScore(index)}%`, { x: A4_WIDTH - 94, y: 672, size: 28, font: fonts.bold, color: rgb(0, 0, 0) });
   page.drawText("MATCH SCORE", { x: A4_WIDTH - 92, y: 654, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
   page.drawLine({ start: { x: A4_WIDTH - 94, y: 644 }, end: { x: A4_WIDTH - 36, y: 644 }, thickness: 1.2, color: PDF_GREEN });
 
-  drawImageFrame(page, images[0] || null, 36, 410, 524, 210);
-  drawImageFrame(page, images[1] || images[0] || null, 36, 296, 164, 96);
-  drawImageFrame(page, images[2] || images[0] || null, 215, 296, 164, 96);
-  drawImageFrame(page, images[3] || images[0] || null, 394, 296, 166, 96);
-  drawSpecRow(page, property, fonts, 250);
+  drawImageFrame(page, images[0] || null, 36, 398, 524, 202);
+  drawImageFrame(page, images[1] || images[0] || null, 36, 288, 164, 90);
+  drawImageFrame(page, images[2] || images[0] || null, 215, 288, 164, 90);
+  drawImageFrame(page, images[3] || images[0] || null, 394, 288, 166, 90);
+  drawSpecRow(page, property, fonts, 244);
   page.drawLine({ start: { x: 36, y: 220 }, end: { x: A4_WIDTH - 36, y: 220 }, thickness: 0.7, color: PDF_BORDER });
 
   page.drawText("DESCRIPTION", { x: 36, y: 190, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
@@ -1360,6 +1609,7 @@ async function drawContactPage(context: PdfContext) {
   page.drawRectangle({ x: 38, y: 305, width: 340, height: 74, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
   page.drawText("Ready to chat?", { x: 96, y: 352, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
   page.drawText("Book a time that suits you.", { x: 96, y: 333, size: 10, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
+  drawPdfIcon(page, "phone", 58, 328, 24, PDF_GREEN);
   page.drawRectangle({ x: 238, y: 322, width: 112, height: 34, color: rgb(1, 1, 1), borderColor: PDF_GREEN, borderWidth: 0.9 });
   page.drawText("Schedule a Call", { x: 258, y: 335, size: 10, font: fonts.bold, color: PDF_GREEN });
   page.drawText("Thank you for trusting me with your property search.", { x: 42, y: 250, size: 12, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
@@ -1371,7 +1621,8 @@ async function drawContactPage(context: PdfContext) {
   page.drawText(brokerName(broker).slice(0, 22), { x: 436, y: 484, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
   page.drawText(brokerRole(broker).slice(0, 26), { x: 432, y: 466, size: 9, font: fonts.regular, color: rgb(0.15, 0.15, 0.15) });
   [broker?.phone, broker?.email, broker?.website_url].filter(Boolean).forEach((item, index) => {
-    page.drawText(pdfSafeText(item).slice(0, 28), { x: 438, y: 425 - index * 25, size: 8.5, font: fonts.regular, color: rgb(0.12, 0.12, 0.12) });
+    drawPdfIcon(page, ["phone", "mail", "web"][index], 428, 420 - index * 25, 11, PDF_GREEN);
+    page.drawText(pdfSafeText(item).slice(0, 24), { x: 446, y: 423 - index * 25, size: 8.2, font: fonts.regular, color: rgb(0.12, 0.12, 0.12) });
   });
   page.drawRectangle({ x: 425, y: 265, width: 120, height: 90, color: PDF_SOFT });
   drawBrand(page, logo, fonts, 456, 334, 78);

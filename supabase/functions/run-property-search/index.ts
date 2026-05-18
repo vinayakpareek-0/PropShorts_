@@ -13,6 +13,7 @@ import {
 interface Body {
   run_id?: string;
   property_count?: number | string;
+  demo_mode?: boolean | string;
 }
 
 Deno.serve(async (req) => {
@@ -31,7 +32,8 @@ Deno.serve(async (req) => {
     const run = await loadRun(supabase, runId);
     const requirement = await loadRequirement(supabase, run.requirement_id);
     const propertyCount = resolvePropertyTargetCount(body.property_count);
-    const result = await persistSearchResults(supabase, run, requirement, propertyCount);
+    const demoMode = body.demo_mode === true || body.demo_mode === "true" || body.demo_mode === "1";
+    const result = await persistSearchResults(supabase, run, requirement, propertyCount, { demoMode });
     return jsonResponse({ success: true, run_id: run.id, search_summary: result.searchSummary, properties: result.properties });
   } catch (error) {
     const message = getErrorMessage(error);
