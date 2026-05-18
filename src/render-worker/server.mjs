@@ -11,6 +11,8 @@ import WebSocket from "ws";
 const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
+const imageFetchTimeoutMs = Number(process.env.REMOTION_IMAGE_FETCH_TIMEOUT_MS || 4500);
+const maxVideoImagesPerProperty = Number(process.env.REMOTION_IMAGES_PER_PROPERTY || 1);
 const fps = 24;
 const activeRenders = new Set();
 let cachedLogoDataUri = null;
@@ -59,7 +61,7 @@ function propertiesFromInput(input) {
         ? record.images
           .map((image) => image && typeof image === "object" ? image.url : image)
           .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))
-          .slice(0, 3)
+          .slice(0, Math.max(1, Math.min(3, maxVideoImagesPerProperty)))
         : [],
     };
   });
@@ -319,18 +321,22 @@ async function imageDataUri(url) {
   if (!url || !/^https?:\/\//i.test(url)) return null;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), imageFetchTimeoutMs);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "PropShorts/1.0 (+https://propshorts.netlify.app)" },
+      headers: {
+        Accept: "image/jpeg,image/png,image/webp,image/*",
+        "User-Agent": "Mozilla/5.0 PropShorts/1.0 (+https://propshorts.netlify.app)",
+      },
     });
     if (!response.ok) return null;
 
     const buffer = Buffer.from(await response.arrayBuffer());
     const jpeg = await sharp(buffer)
-      .resize(900, 900, { fit: "cover", position: "attention" })
-      .jpeg({ quality: 84, mozjpeg: true })
+      .rotate()
+      .resize(760, 760, { fit: "cover", position: "attention", withoutEnlargement: true })
+      .jpeg({ quality: 72, mozjpeg: true })
       .toBuffer();
 
     return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
@@ -345,15 +351,15 @@ async function imageDataUri(url) {
 async function preloadPropertyImages(properties) {
   const urls = [
     ...new Set(
-      properties.flatMap((property) => Array.isArray(property.images) ? property.images.slice(0, 3) : [])
+      properties.flatMap((property) => Array.isArray(property.images) ? property.images.slice(0, Math.max(1, Math.min(3, maxVideoImagesPerProperty))) : [])
         .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url)),
     ),
   ];
   const imageMap = new Map();
 
-  await Promise.all(urls.map(async (url) => {
+  for (const url of urls) {
     imageMap.set(url, await imageDataUri(url));
-  }));
+  }
 
   return imageMap;
 }
@@ -389,7 +395,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, clientName, scri
   for (const [propertyIndex, property] of propertyLines.entries()) {
     slides.push({ duration: 1, svg: propertyNumberSlide(propertyIndex, logoDataUri) });
     for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
-      const imageUrl = property.images[imageIndex] || property.images[0] || null;
+      const imageUrl = property.images[Math.min(imageIndex, property.images.length - 1)] || property.images[0] || null;
       const image = imageUrl ? imageMap.get(imageUrl) || null : null;
       slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image, logoDataUri) });
     }

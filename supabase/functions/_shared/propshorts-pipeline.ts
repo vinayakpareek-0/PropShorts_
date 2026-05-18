@@ -70,6 +70,8 @@ interface PropertyCandidate {
 const PROPERTY_MAX_COUNT = 5;
 const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
+const SEARCH_RETRY_ATTEMPTS = 3;
+const SEARCH_CANDIDATE_POOL_SIZE = 24;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 const PDF_BUCKET = "generated-pdfs";
 const CLIENT_SAFE_FALLBACK_WARNING = "Live property search could not return enough verified listings. Regenerate before sending to a client.";
@@ -504,6 +506,80 @@ async function enrichPropertyWithSourceImages(property: PropertyCandidate): Prom
   return property;
 }
 
+function propertyImageCount(property: PropertyCandidate) {
+  return property.images.filter((image) => image.url && !isGenericFallbackImage(image.url)).length;
+}
+
+function propertyDedupeKey(property: PropertyCandidate) {
+  return [
+    property.trace.source_url,
+    property.trace.listing_id,
+    property.external_property_id,
+    property.title,
+    property.area,
+  ].filter(Boolean).map((value) => String(value).toLowerCase().trim()).join("|");
+}
+
+function sortImageQualifiedProperties(properties: PropertyCandidate[]) {
+  return [...properties]
+    .filter((property) => propertyImageCount(property) > 0)
+    .sort((a, b) => propertyImageCount(b) - propertyImageCount(a));
+}
+
+async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, inferred: ReturnType<typeof inferRequirement>, targetCount: number, attempt: number) {
+  const breadthInstruction = attempt === 1
+    ? "Search broadly first. Inspect a large candidate pool before choosing."
+    : attempt === 2
+      ? "The previous search did not produce enough image-backed listings. Broaden to nearby micro-markets and alternate listing portals."
+      : "Final retry: search the widest credible set of live property listing pages and return only properties with verified images.";
+  const prompt = [
+    "You are the PropShorts Search Agent. Return JSON only.",
+    `Find at least ${SEARCH_CANDIDATE_POOL_SIZE} credible live property listing candidates, then return the best image-backed matches for the broker requirement.`,
+    `Need ${targetCount} final recommendations, but return up to ${SEARCH_CANDIDATE_POOL_SIZE} candidates if they have actual listing photos so the app can filter.`,
+    breadthInstruction,
+    "Use live web results. Prefer credible active listing pages with useful photos. Relevance beats volume after image availability.",
+    "Every final property must have at least 1 real property image. Prefer 3 direct image URLs from the actual listing page: hero/exterior, main interior, and another useful angle.",
+    "Never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
+    "If direct image URLs cannot be verified, include the public listing page in trace.source_url so PropShorts can extract images. Do not include image-less properties unless no image-backed listings exist.",
+    "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
+    "Keep source URLs and third-party listing contact data only inside trace. Never copy third-party contact data into client-safe fields.",
+    "Return clean client-facing copy. Do not mention brokers, internal search systems, AI, handoff, fallback, or technical workflow details in title/headline/description/highlights.",
+    "Schema: {\"search_summary\":{\"interpreted_brief\":\"string\",\"assumptions\":[\"string\"],\"property_category\":\"residential|commercial|land\",\"warnings\":[\"string\"]},\"properties\":[{\"external_property_id\":\"string\",\"title\":\"string\",\"area\":\"string|null\",\"city\":\"string|null\",\"property_category\":\"residential|commercial|land\",\"property_type\":\"string|null\",\"rent_or_buy\":\"rent|buy|unknown\",\"price\":number|null,\"price_label\":\"string|null\",\"currency\":\"string|null\",\"bedrooms\":number|null,\"bathrooms\":number|null,\"sqft\":number|null,\"size_label\":\"string|null\",\"headline\":\"string\",\"description\":\"string\",\"highlights\":[\"string\"],\"images\":[{\"id\":\"string\",\"url\":\"https://...\",\"alt\":\"string\",\"role\":\"hero|interior|detail\"}],\"trace\":{\"source_url\":\"string|null\",\"platform\":\"string|null\",\"listing_id\":\"string|null\",\"agent_name\":\"string|null\",\"agent_phone\":\"string|null\",\"agent_email\":\"string|null\",\"internal_notes\":\"string|null\"}}]}",
+    `Interpreted requirement: ${JSON.stringify(inferred)}`,
+    `Original requirement: ${JSON.stringify(requirement.refined_requirements_json ?? requirement.raw_input ?? requirement.source_url)}`,
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      input: prompt,
+      temperature: attempt === 1 ? 0.15 : 0.25,
+      tools: [{ type: "web_search", search_context_size: "high" }],
+      tool_choice: "auto",
+    }),
+  });
+
+  if (!response.ok) {
+    return {
+      parsed: null,
+      rawProperties: [],
+      warning: `Search attempt ${attempt} failed with status ${response.status}.`,
+    };
+  }
+
+  const data = await response.json();
+  const text = collectResponseText(data);
+  const parsed = parseJsonObject(text) || await repairSearchJson(openAiKey, text, SEARCH_CANDIDATE_POOL_SIZE);
+  const rawProperties = Array.isArray(parsed?.properties) ? parsed.properties as Array<Record<string, unknown>> : [];
+  return {
+    parsed,
+    rawProperties,
+    warning: rawProperties.length === 0 ? `Search attempt ${attempt} returned no parseable properties.` : null,
+  };
+}
+
 export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT): Promise<{
   searchSummary: Record<string, unknown>;
   properties: PropertyCandidate[];
@@ -524,72 +600,48 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     };
   }
 
-  const prompt = [
-    "You are the PropShorts Search Agent. Return JSON only.",
-    `Find ${targetCount} highly suitable, traceable, client-safe property recommendations from the broker requirement.`,
-    "Use live web results. Prefer credible active listing pages with useful photos. Relevance beats volume.",
-    "Each selected property should include up to 3 direct image URLs from the actual listing page when possible: hero/exterior, main interior, and another useful angle.",
-    "Never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
-    "If direct image URLs cannot be verified, return an empty images array and include the public listing page in trace.source_url so PropShorts can extract the images.",
-    "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
-    "Keep source URLs and third-party listing contact data only inside trace. Never copy third-party contact data into client-safe fields.",
-    "Return clean client-facing copy. Do not mention brokers, internal search systems, AI, handoff, fallback, or technical workflow details in title/headline/description/highlights.",
-    "Schema: {\"search_summary\":{\"interpreted_brief\":\"string\",\"assumptions\":[\"string\"],\"property_category\":\"residential|commercial|land\",\"warnings\":[\"string\"]},\"properties\":[{\"external_property_id\":\"string\",\"title\":\"string\",\"area\":\"string|null\",\"city\":\"string|null\",\"property_category\":\"residential|commercial|land\",\"property_type\":\"string|null\",\"rent_or_buy\":\"rent|buy|unknown\",\"price\":number|null,\"price_label\":\"string|null\",\"currency\":\"string|null\",\"bedrooms\":number|null,\"bathrooms\":number|null,\"sqft\":number|null,\"size_label\":\"string|null\",\"headline\":\"string\",\"description\":\"string\",\"highlights\":[\"string\"],\"images\":[{\"id\":\"string\",\"url\":\"https://...\",\"alt\":\"string\",\"role\":\"hero|interior|detail\"}],\"trace\":{\"source_url\":\"string|null\",\"platform\":\"string|null\",\"listing_id\":\"string|null\",\"agent_name\":\"string|null\",\"agent_phone\":\"string|null\",\"agent_email\":\"string|null\",\"internal_notes\":\"string|null\"}}]}",
-    `Requirement: ${JSON.stringify(requirement.refined_requirements_json ?? requirement.raw_input ?? requirement.source_url)}`,
-  ].join("\n");
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      input: prompt,
-      temperature: 0.2,
-      tools: [{ type: "web_search", search_context_size: "medium" }],
-      tool_choice: "auto",
-    }),
-  });
-
-  if (!response.ok) {
-    return {
-      searchSummary: {
-        interpreted_brief: inferred.note,
-        assumptions: ["Live search planning failed; generated a requirement-based draft."],
-        property_category: inferred.category,
-        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
-      },
-      properties: buildFallbackProperties(requirement, targetCount),
-    };
-  }
-
-  const data = await response.json();
-  const text = collectResponseText(data);
-  const parsed = parseJsonObject(text) || await repairSearchJson(openAiKey, text, targetCount);
-  const rawProperties = Array.isArray(parsed?.properties) ? parsed.properties as Array<Record<string, unknown>> : [];
-
-  if (!parsed || rawProperties.length === 0) {
-    return {
-      searchSummary: {
-        interpreted_brief: inferred.note,
-        assumptions: ["Search output could not be parsed; generated a requirement-based draft."],
-        property_category: inferred.category,
-        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
-      },
-      properties: buildFallbackProperties(requirement, targetCount),
-    };
-  }
-
   const fallbackProperties = buildFallbackProperties(requirement, targetCount);
-  const normalizedProperties = await Promise.all(rawProperties.slice(0, targetCount).map((property, index) =>
-    enrichPropertyWithSourceImages(normalizeAiProperty(property, fallbackProperties[index], index))
-  ));
-  while (normalizedProperties.length < targetCount) {
-    normalizedProperties.push(fallbackProperties[normalizedProperties.length]);
+  const collected = new Map<string, PropertyCandidate>();
+  const warnings: string[] = [];
+  let latestSummary: Record<string, unknown> | null = null;
+
+  for (let attempt = 1; attempt <= SEARCH_RETRY_ATTEMPTS; attempt += 1) {
+    const { parsed, rawProperties, warning } = await runSearchAttempt(openAiKey, requirement, inferred, targetCount, attempt);
+    if (warning) warnings.push(warning);
+    if (parsed?.search_summary && typeof parsed.search_summary === "object") {
+      latestSummary = parsed.search_summary as Record<string, unknown>;
+    }
+
+    const normalized = await Promise.all(rawProperties.slice(0, SEARCH_CANDIDATE_POOL_SIZE).map((property, index) =>
+      enrichPropertyWithSourceImages(normalizeAiProperty(property, fallbackProperties[index % fallbackProperties.length], index))
+    ));
+
+    for (const property of sortImageQualifiedProperties(normalized)) {
+      const key = propertyDedupeKey(property);
+      if (key && !collected.has(key)) collected.set(key, { ...property, sort_order: collected.size + 1 });
+    }
+
+    if (collected.size >= targetCount) break;
+  }
+
+  const imageQualifiedProperties = Array.from(collected.values()).slice(0, targetCount).map((property, index) => ({
+    ...property,
+    sort_order: index + 1,
+  }));
+
+  if (imageQualifiedProperties.length < targetCount) {
+    throw new Error(`IMAGE_QUALIFIED_SEARCH_FAILED: Found ${imageQualifiedProperties.length}/${targetCount} listings with real images after ${SEARCH_RETRY_ATTEMPTS} search attempts.`);
   }
 
   return {
-    searchSummary: parsed.search_summary as Record<string, unknown>,
-    properties: normalizedProperties,
+    searchSummary: {
+      interpreted_brief: inferred.note,
+      ...(latestSummary ?? {}),
+      search_attempts: SEARCH_RETRY_ATTEMPTS,
+      image_qualified_count: imageQualifiedProperties.length,
+      warnings,
+    },
+    properties: imageQualifiedProperties,
   };
 }
 
