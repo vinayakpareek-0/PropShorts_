@@ -62,6 +62,7 @@ const PROPERTY_MAX_COUNT = 5;
 const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
+const PDF_BUCKET = "generated-pdfs";
 
 const fallbackImageSets = [
   [
@@ -951,8 +952,7 @@ async function buildDesignedPdf(title: string, clientName: string, properties: A
     drawPdfPropertyPage(pdfDoc, property, propertyImages, index, logo, fonts);
   }
 
-  const bytes = await pdfDoc.save();
-  return `data:application/pdf;base64,${bytesToBase64(bytes)}`;
+  return await pdfDoc.save();
 }
 
 export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT) {
@@ -971,16 +971,37 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
   const title = `PropShorts Recommendations for ${clientName}`;
   const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const pdfProperties = sortedProperties.slice(0, targetCount) as Array<Record<string, unknown>>;
-  const pdfUrl = await buildDesignedPdf(title, clientName, pdfProperties);
+  const pdfId = crypto.randomUUID();
+  const pdfBytes = await buildDesignedPdf(title, clientName, pdfProperties);
+  const objectPath = `${run.user_id}/${pdfId}.pdf`;
+  let pdfUrl = `data:application/pdf;base64,${bytesToBase64(pdfBytes)}`;
+  let storagePath: string | null = null;
+
+  const body = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+  const { error: uploadError } = await supabase.storage
+    .from(PDF_BUCKET)
+    .upload(objectPath, body, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (!uploadError) {
+    const { data: publicData } = supabase.storage.from(PDF_BUCKET).getPublicUrl(objectPath);
+    pdfUrl = publicData.publicUrl;
+    storagePath = objectPath;
+  } else {
+    console.warn(`PDF_STORAGE_UPLOAD_FAILED:${getErrorMessage(uploadError)}`);
+  }
 
   const { data, error: insertError } = await supabase
     .from("generated_pdfs")
     .insert({
+      id: pdfId,
       user_id: run.user_id,
       run_id: run.id,
       pdf_url: pdfUrl,
       page_count: pdfProperties.length + 1,
-      input_json: { title, clientName, properties: pdfProperties },
+      input_json: { title, clientName, properties: pdfProperties, storagePath },
       status: "completed",
       completed_at: new Date().toISOString(),
     })

@@ -22,6 +22,7 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +51,32 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
   const pdfUrl = pkg?.generated_pdfs?.pdf_url || "";
   const clientName = pkg?.client_requirements?.client_name || "Client";
   const title = pkg?.package_title || `PropShorts report for ${clientName}`;
+
+  useEffect(() => {
+    if (!pdfUrl) {
+      setPreviewUrl("");
+      return;
+    }
+
+    if (!pdfUrl.startsWith("data:application/pdf;base64,")) {
+      setPreviewUrl(pdfUrl);
+      return;
+    }
+
+    const base64 = pdfUrl.split(",", 2)[1] || "";
+    const binary = window.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    setPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [pdfUrl]);
 
   async function handleShare() {
     if (!pkg?.share_slug) return;
@@ -87,10 +114,10 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
         ) : pkg ? (
           <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
             <section className="rounded-3xl bg-[#f5f5f5] p-6">
-              {pdfUrl ? (
+              {previewUrl ? (
                 <iframe
                   title={title}
-                  src={pdfUrl}
+                  src={previewUrl}
                   className="h-[760px] w-full rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.06]"
                 />
               ) : (
@@ -110,9 +137,9 @@ export default function PdfViewerClient({ pdfId }: PdfViewerClientProps) {
                 <p className="mt-4 text-[12px] font-medium uppercase tracking-wide text-black/35">
                   REF {refCode(pkg.id)} · {shortDate(pkg.created_at)}
                 </p>
-                {pdfUrl ? (
+                {previewUrl ? (
                   <a
-                    href={pdfUrl}
+                    href={previewUrl}
                     download={`${refCode(pkg.id)}.pdf`}
                     className="mt-5 block rounded-xl bg-black px-5 py-3 text-center text-[14px] font-semibold text-white"
                   >
