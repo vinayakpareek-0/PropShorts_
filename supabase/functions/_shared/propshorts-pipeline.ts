@@ -1390,6 +1390,52 @@ function averageNumber(properties: Array<Record<string, unknown>>, key: string) 
   return Number.isInteger(avg) ? String(avg) : avg.toFixed(1);
 }
 
+function drawFittedRightText(
+  page: PdfPage,
+  text: string,
+  rightX: number,
+  y: number,
+  maxWidth: number,
+  font: PdfFonts["bold"],
+  options: { size: number; minSize?: number; color?: ReturnType<typeof rgb> },
+) {
+  const value = pdfSafeText(text);
+  const minSize = options.minSize ?? 8;
+  let size = options.size;
+  while (size > minSize && font.widthOfTextAtSize(value, size) > maxWidth) {
+    size -= 0.5;
+  }
+
+  if (font.widthOfTextAtSize(value, size) <= maxWidth) {
+    page.drawText(value, {
+      x: rightX - font.widthOfTextAtSize(value, size),
+      y,
+      size,
+      font,
+      color: options.color ?? rgb(0, 0, 0),
+    });
+    return;
+  }
+
+  const words = value.split(" ");
+  const firstLine: string[] = [];
+  const secondLine: string[] = [];
+  words.forEach((word) => {
+    const target = font.widthOfTextAtSize([...firstLine, word].join(" "), size) <= maxWidth ? firstLine : secondLine;
+    target.push(word);
+  });
+
+  [firstLine.join(" "), secondLine.join(" ")].filter(Boolean).slice(0, 2).forEach((line, index) => {
+    page.drawText(line, {
+      x: rightX - font.widthOfTextAtSize(line, size),
+      y: y + (index === 0 ? 5 : -7),
+      size,
+      font,
+      color: options.color ?? rgb(0, 0, 0),
+    });
+  });
+}
+
 function brokerName(broker: BrokerPdfProfile | null) {
   return pdfSafeText(broker?.full_name || "Your Property Expert");
 }
@@ -1477,7 +1523,7 @@ function drawSummaryPage(context: PdfContext) {
   ].forEach(([label, value], index) => {
     const y = 392 - index * 38;
     page.drawText(label, { x: 338, y, size: 10, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
-    page.drawText(value, { x: 530 - fonts.bold.widthOfTextAtSize(value, 14), y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+    drawFittedRightText(page, value, 540, y, 112, fonts.bold, { size: 14, minSize: 8.5 });
     if (index < 5) page.drawLine({ start: { x: 338, y: y - 16 }, end: { x: 540, y: y - 16 }, thickness: 0.5, color: PDF_BORDER });
   });
 
@@ -1564,9 +1610,10 @@ async function drawPropertyDetailPage(context: PdfContext, property: Record<stri
     page.drawRectangle({ x: 36, y: badgeY, width: 72, height: 18, color: PDF_LIGHT_GREEN, borderColor: PDF_GREEN, borderWidth: 0.8 });
     page.drawText("BEST VALUE", { x: 45, y: badgeY + 5, size: 8, font: fonts.bold, color: PDF_GREEN });
   }
-  page.drawText(`${matchScore(index)}%`, { x: A4_WIDTH - 94, y: 672, size: 28, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawText("MATCH SCORE", { x: A4_WIDTH - 92, y: 654, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
-  page.drawLine({ start: { x: A4_WIDTH - 94, y: 644 }, end: { x: A4_WIDTH - 36, y: 644 }, thickness: 1.2, color: PDF_GREEN });
+  page.drawRectangle({ x: 430, y: 612, width: 130, height: 46, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.6 });
+  page.drawText(`${matchScore(index)}%`, { x: 448, y: 629, size: 20, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("MATCH SCORE", { x: 494, y: 634, size: 7.2, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("Brief fit", { x: 494, y: 622, size: 7.2, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
 
   drawImageFrame(page, images[0] || null, 36, 398, 524, 202);
   drawImageFrame(page, images[1] || images[0] || null, 36, 288, 164, 90);
