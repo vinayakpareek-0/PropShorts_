@@ -1417,6 +1417,12 @@ function priceRange(properties: Array<Record<string, unknown>>) {
   return min === max ? `INR ${min}` : `INR ${min} - ${max}`;
 }
 
+function greetingName(clientName: string) {
+  return pdfSafeText(clientName)
+    .split(/\s+/)[0]
+    ?.replace(/[^a-zA-Z0-9]+$/g, "") || "there";
+}
+
 function averageNumber(properties: Array<Record<string, unknown>>, key: string) {
   const values = properties.map((property) => asFlexibleNumber(property[key])).filter((value): value is number => typeof value === "number");
   if (!values.length) return "On request";
@@ -1516,8 +1522,16 @@ function drawSummaryPage(context: PdfContext) {
   const { properties, clientName, requirement, logo, fonts } = context;
   const page = context.pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   drawHeader(page, logo, fonts, "Summary", 2);
-  page.drawText(`Hi ${pdfSafeText(clientName).split(" ")[0] || "there"},`, { x: 36, y: 670, size: 41, font: fonts.regular, color: rgb(0, 0, 0) });
-  drawTextLines(page, wrapPdfText(`Thanks for sharing your requirements. I have selected ${properties.length} properties that best match your criteria and goals.`, 46, 4), 36, 610, 14, fonts.regular, { leading: 24 });
+  page.drawText(`Hi ${greetingName(clientName)},`, { x: 36, y: 670, size: 38, font: fonts.regular, color: rgb(0, 0, 0) });
+  drawTextLines(
+    page,
+    wrapPdfText(`Thanks for sharing your requirements. I have selected ${properties.length} properties that best match your criteria and goals.`, 34, 5),
+    36,
+    610,
+    12.5,
+    fonts.regular,
+    { leading: 20 },
+  );
 
   page.drawText("YOUR CRITERIA", { x: 318, y: 690, size: 9, font: fonts.bold, color: rgb(0, 0, 0) });
   const criteria = summaryCriteria(requirement);
