@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
+import PageFooter from "@/components/layout/PageFooter";
 import PropShortListItem from "@/components/lists/PropShortListItem";
 import {
   briefFromRequirement,
@@ -138,15 +139,7 @@ export default function PropShortsPage() {
           )}
         </main>
 
-        <footer className="flex w-full flex-col items-center gap-2 pb-10 pt-10">
-          <Link
-            href="/dashboard"
-            className="text-[15px] font-medium text-black underline underline-offset-2 transition-opacity hover:opacity-60"
-          >
-            Back to Dashboard
-          </Link>
-          <p className="mt-2 text-[12px] text-black/25">2026 propshorts</p>
-        </footer>
+        <PageFooter />
       </div>
     </SidebarShell>
   );

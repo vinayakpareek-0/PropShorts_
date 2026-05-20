@@ -38,9 +38,9 @@ export default function SidebarShell({ children, className = "" }: SidebarShellP
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f7f7f7] font-[family-name:var(--font-poppins)] text-black">
+    <div className="flex h-screen overflow-hidden bg-white font-[family-name:var(--font-poppins)] text-black">
       <Sidebar />
-      <main className={`flex flex-1 flex-col overflow-y-auto pb-24 md:pb-0 ${className}`}>{children}</main>
+      <main className={`flex flex-1 flex-col overflow-y-auto bg-white pb-24 md:pb-0 ${className}`}>{children}</main>
     </div>
   );
 }

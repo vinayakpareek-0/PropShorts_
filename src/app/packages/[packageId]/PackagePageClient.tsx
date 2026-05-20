@@ -99,8 +99,8 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
 
   return (
     <SidebarShell>
-      <div className="flex min-h-full flex-col items-center justify-between bg-white px-5 text-black">
-        <main className="mx-auto flex w-full max-w-[500px] flex-1 flex-col items-center justify-center">
+      <div className="flex min-h-full flex-col items-center bg-white px-5 text-black">
+        <main className="mx-auto flex w-full max-w-[500px] flex-1 flex-col items-center justify-center py-10">
           <div className="mb-8 w-full text-center">
             <h1 className="text-[52px] font-normal leading-[1.05] tracking-[-0.02em] text-black sm:text-[74px]">
               Ready.
@@ -181,35 +181,37 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
           ) : null}
         </main>
 
-        <footer className="mx-auto flex w-full max-w-[500px] flex-col items-center gap-5 pb-14 pt-8">
-          <button
-            onClick={handleShare}
-            disabled={!pkg?.share_slug}
-            className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
-          >
-            {shared ? "Public Link Copied!" : "Share Public Link"}
-          </button>
-          {pkg?.share_slug ? (
-            <Link
-              href={`/share/${pkg.share_slug}`}
-              target="_blank"
-              className="text-[14px] font-medium text-black/45 underline underline-offset-2 transition-opacity hover:opacity-70"
+        <footer className="-mx-5 mt-12 w-[calc(100%+2.5rem)] bg-[#f7f7f7] px-5 pb-14 pt-10">
+          <div className="mx-auto flex w-full max-w-[500px] flex-col items-center gap-5">
+            <button
+              onClick={handleShare}
+              disabled={!pkg?.share_slug}
+              className="w-full rounded-xl bg-black py-4 text-[17px] font-medium text-white transition-opacity hover:opacity-80 active:scale-[0.98]"
             >
-              Open public page
+              {shared ? "Public Link Copied!" : "Share Public Link"}
+            </button>
+            {pkg?.share_slug ? (
+              <Link
+                href={`/share/${pkg.share_slug}`}
+                target="_blank"
+                className="text-[14px] font-medium text-black/45 underline underline-offset-2 transition-opacity hover:opacity-70"
+              >
+                Open public page
+              </Link>
+            ) : null}
+            <Link
+              href="/dashboard"
+              className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"
+            >
+              Share Later
             </Link>
-          ) : null}
-          <Link
-            href="/dashboard"
-            className="text-[20px] font-normal text-black transition-opacity hover:opacity-50"
-          >
-            Share Later
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-[14px] font-normal text-black/40 transition-opacity hover:opacity-70"
-          >
-            Cancel
-          </Link>
+            <Link
+              href="/dashboard"
+              className="text-[14px] font-normal text-black/40 transition-opacity hover:opacity-70"
+            >
+              Cancel
+            </Link>
+          </div>
         </footer>
       </div>
     </SidebarShell>

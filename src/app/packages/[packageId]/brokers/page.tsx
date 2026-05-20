@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import SidebarShell from "@/components/layout/SidebarShell";
+import PageFooter from "@/components/layout/PageFooter";
 import BrokerCard from "@/components/lists/BrokerCard";
 import {
   fetchPackageBrokerContacts,
@@ -115,15 +115,7 @@ export default function ListingBrokersPage({ params }: BrokersPageProps) {
           )}
         </main>
 
-        <footer className="flex w-full flex-col items-center gap-2 pb-10 pt-6">
-          <Link
-            href={`/packages/${packageId}`}
-            className="text-[15px] font-medium text-black underline underline-offset-2 transition-opacity hover:opacity-60"
-          >
-            Back to Package
-          </Link>
-          <p className="mt-2 text-[12px] text-black/25">2026 propshorts</p>
-        </footer>
+        <PageFooter href={`/packages/${packageId}`} label="Back to Package" />
       </div>
     </SidebarShell>
   );
