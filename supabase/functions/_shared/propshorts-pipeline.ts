@@ -1554,6 +1554,9 @@ async function drawOverviewPage(context: PdfContext) {
     drawImageFrame(page, images[index], x + 6, y + 8, isWide ? 230 : 132, h - 16);
     page.drawCircle({ x: x + 22, y: y + h - 24, size: 13, color: rgb(0, 0, 0) });
     page.drawText(String(index + 1), { x: x + 18, y: y + h - 29, size: 13, font: fonts.bold, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: x + 14, y: y + 16, width: 76, height: 24, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.6 });
+    page.drawText(`${matchScore(index)}%`, { x: x + 24, y: y + 26, size: 11.5, font: fonts.bold, color: PDF_GREEN });
+    page.drawText("MATCH", { x: x + 55, y: y + 27, size: 6, font: fonts.bold, color: PDF_GREEN });
     const tx = x + (isWide ? 255 : 152);
     drawTextLines(page, wrapPdfText(propertyTitle(property, index), isWide ? 28 : 18, 2), tx, y + h - 34, 10.5, fonts.bold, { leading: 12 });
     page.drawText(propertyLocation(property).slice(0, 25), { x: tx, y: y + h - 56, size: 8.5, font: fonts.regular, color: rgb(0, 0, 0) });
@@ -1563,9 +1566,6 @@ async function drawOverviewPage(context: PdfContext) {
       page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx + 16, y: y + h - 84 - specIndex * 16, size: 8.3, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
     });
     page.drawText(pdfSafeText(property.price_label || "Price on request"), { x: tx, y: y + 30, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
-    page.drawRectangle({ x: x + w - 90, y: y + 14, width: 70, height: 42, color: PDF_SOFT });
-    page.drawText(`${matchScore(index)}%`, { x: x + w - 72, y: y + 31, size: 18, font: fonts.bold, color: PDF_GREEN });
-    page.drawText("MATCH", { x: x + w - 66, y: y + 20, size: 7, font: fonts.bold, color: PDF_GREEN });
   });
 
   page.drawRectangle({ x: 36, y: 82, width: A4_WIDTH - 72, height: 68, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.8 });

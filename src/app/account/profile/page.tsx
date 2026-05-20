@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { supabase } from "@/lib/supabase/client";
 import {
   fetchBrokerProfile,
   saveBrokerProfile,
@@ -27,6 +29,7 @@ export default function ProfilePage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -71,6 +74,54 @@ export default function ProfilePage() {
       .join("") || "BR";
   }, [values.email, values.full_name]);
 
+  async function handlePhotoUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploadingPhoto) return;
+
+    setError("");
+    setMessage("");
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload a JPG, PNG, or WebP image.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Profile photo must be under 5 MB.");
+      return;
+    }
+
+    if (!user?.id) {
+      setError("Please sign in again before uploading a profile photo.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+
+    try {
+      const extension = file.type.includes("png") ? "png" : file.type.includes("webp") ? "webp" : "jpg";
+      const objectPath = `${user.id}/profile-photo.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("broker-assets")
+        .upload(objectPath, file, {
+          contentType: file.type,
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("broker-assets").getPublicUrl(objectPath);
+      const publicUrl = `${data.publicUrl}?v=${Date.now()}`;
+      setValues((current) => ({ ...current, profile_photo_url: publicUrl }));
+      setMessage("Photo uploaded. Save changes to use it in future PDFs.");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Could not upload profile photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -112,9 +163,19 @@ export default function ProfilePage() {
 
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <aside className="rounded-3xl bg-black p-6 text-white">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-[20px] font-semibold text-black">
-              {initials}
-            </div>
+            {values.profile_photo_url ? (
+              <Image
+                src={values.profile_photo_url}
+                alt="Broker profile"
+                width={80}
+                height={80}
+                className="h-20 w-20 rounded-2xl bg-white object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white text-[20px] font-semibold text-black">
+                {initials}
+              </div>
+            )}
             <h2 className="mt-5 text-[24px] font-semibold leading-tight">{values.full_name || "Profile not completed"}</h2>
             <p className="mt-1 text-[14px] text-white/55">{values.company_name || values.email || "Add your broker details"}</p>
             <div className="mt-6 rounded-2xl bg-white/10 p-4">
@@ -164,16 +225,37 @@ export default function ProfilePage() {
                     className={inputClass}
                   />
                 </label>
-                <label className="text-[13px] font-medium text-black/55">
-                  Profile photo URL
-                  <input
-                    type="url"
-                    value={values.profile_photo_url}
-                    placeholder="https://..."
-                    onChange={(event) => setValues((current) => ({ ...current, profile_photo_url: event.target.value }))}
-                    className={inputClass}
-                  />
-                </label>
+                <div className="text-[13px] font-medium text-black/55">
+                  Profile photo
+                  <div className="mt-2 flex items-center gap-4 rounded-2xl border border-black/[0.06] bg-[#f5f5f5] p-3">
+                    {values.profile_photo_url ? (
+                      <Image
+                        src={values.profile_photo_url}
+                        alt="Uploaded broker profile"
+                        width={56}
+                        height={56}
+                        className="h-14 w-14 rounded-xl bg-white object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white text-[14px] font-semibold text-black">
+                        {initials}
+                      </div>
+                    )}
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-black px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-80">
+                      {uploadingPhoto ? "Uploading..." : values.profile_photo_url ? "Replace Photo" : "Upload Photo"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handlePhotoUpload}
+                        disabled={uploadingPhoto}
+                        className="sr-only"
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-2 text-[12px] leading-5 text-black/35">
+                    Used in generated PDFs as your broker photo.
+                  </p>
+                </div>
                 <label className="text-[13px] font-medium text-black/55">
                   Website URL
                   <input
