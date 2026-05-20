@@ -6,10 +6,10 @@ import {
   popGraphicsState,
   pushGraphicsState,
   rectangle,
-  StandardFonts,
   rgb,
 } from "https://esm.sh/pdf-lib@1.17.1";
 import type { PDFImage } from "https://esm.sh/pdf-lib@1.17.1";
+import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,6 +79,11 @@ const SEARCH_CANDIDATE_POOL_SIZE = 24;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 const PDF_BUCKET = "generated-pdfs";
 const CLIENT_SAFE_FALLBACK_WARNING = "Live property search could not return enough verified listings. Regenerate before sending to a client.";
+const POPPINS_REGULAR_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf";
+const POPPINS_SEMIBOLD_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-SemiBold.ttf";
+const POPPINS_BOLD_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf";
+
+const fontBytesCache = new Map<string, Uint8Array>();
 
 const demoImageSets = [
   [
@@ -1186,7 +1191,7 @@ const PDF_SOFT = rgb(0.965, 0.965, 0.955);
 
 type PdfPage = ReturnType<PDFDocument["addPage"]>;
 type PdfFont = Awaited<ReturnType<PDFDocument["embedFont"]>>;
-type PdfFonts = { regular: PdfFont; bold: PdfFont };
+type PdfFonts = { regular: PdfFont; medium: PdfFont; bold: PdfFont };
 type BrokerPdfProfile = {
   full_name?: string | null;
   company_name?: string | null;
@@ -1225,6 +1230,35 @@ function drawTextLines(
       color: options.color ?? rgb(0, 0, 0),
     });
   });
+}
+
+async function fetchFontBytes(url: string) {
+  const cached = fontBytesCache.get(url);
+  if (cached) return cached;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`PDF_FONT_LOAD_FAILED:${response.status}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  fontBytesCache.set(url, bytes);
+  return bytes;
+}
+
+async function loadPdfFonts(pdfDoc: PDFDocument): Promise<PdfFonts> {
+  pdfDoc.registerFontkit(fontkit);
+  const [regularBytes, mediumBytes, boldBytes] = await Promise.all([
+    fetchFontBytes(POPPINS_REGULAR_URL),
+    fetchFontBytes(POPPINS_SEMIBOLD_URL),
+    fetchFontBytes(POPPINS_BOLD_URL),
+  ]);
+
+  return {
+    regular: await pdfDoc.embedFont(regularBytes, { subset: true }),
+    medium: await pdfDoc.embedFont(mediumBytes, { subset: true }),
+    bold: await pdfDoc.embedFont(boldBytes, { subset: true }),
+  };
 }
 
 function drawPdfIcon(page: PdfPage, icon: string, x: number, y: number, size = 12, color: ReturnType<typeof rgb> = PDF_GREEN) {
@@ -1523,7 +1557,7 @@ function drawSummaryPage(context: PdfContext) {
   ].forEach(([label, value], index) => {
     const y = 392 - index * 38;
     page.drawText(label, { x: 338, y, size: 10, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
-    drawFittedRightText(page, value, 540, y, 112, fonts.bold, { size: 14, minSize: 8.5 });
+    drawFittedRightText(page, value, 540, y + 1, 112, fonts.bold, { size: 10.5, minSize: 8 });
     if (index < 5) page.drawLine({ start: { x: 338, y: y - 16 }, end: { x: 540, y: y - 16 }, thickness: 0.5, color: PDF_BORDER });
   });
 
@@ -1575,8 +1609,8 @@ async function drawOverviewPage(context: PdfContext) {
   page.drawText(propertyTitle(properties[0], 0).slice(0, 36), { x: 132, y: 108, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
   page.drawText("Excellent match across your criteria and budget goals.", { x: 132, y: 91, size: 9, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
   page.drawLine({ start: { x: 380, y: 92 }, end: { x: 380, y: 140 }, thickness: 0.6, color: PDF_BORDER });
-  page.drawText(`${matchScore(0)}%`, { x: 438, y: 108, size: 36, font: fonts.bold, color: PDF_GREEN });
-  page.drawText("MATCH SCORE", { x: 444, y: 91, size: 9, font: fonts.bold, color: PDF_GREEN });
+  page.drawText(`${matchScore(0)}%`, { x: 444, y: 113, size: 18, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("MATCH SCORE", { x: 444, y: 98, size: 7.5, font: fonts.bold, color: PDF_GREEN });
   drawFooter(page, logo, fonts, 3);
 }
 
@@ -1586,7 +1620,7 @@ function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: Pd
   specs.forEach((spec, index) => {
     const x = 40 + index * width;
     drawPdfIcon(page, spec.label === "BEDROOMS" ? "bed" : spec.label === "BATHROOMS" ? "bath" : spec.label === "SQFT" || spec.label === "SIZE" ? "size" : "home", x + 4, y - 2, 13, PDF_GREEN);
-    page.drawText(spec.value, { x: x + 24, y, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
+    page.drawText(spec.value, { x: x + 24, y: y + 1, size: 11, font: fonts.bold, color: rgb(0, 0, 0) });
     page.drawText(spec.label, { x: x + 24, y: y - 14, size: 7.5, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
     if (index > 0) page.drawLine({ start: { x, y: y - 10 }, end: { x, y: y + 24 }, thickness: 0.5, color: PDF_BORDER });
   });
@@ -1611,8 +1645,8 @@ async function drawPropertyDetailPage(context: PdfContext, property: Record<stri
     page.drawText("BEST VALUE", { x: 45, y: badgeY + 5, size: 8, font: fonts.bold, color: PDF_GREEN });
   }
   page.drawRectangle({ x: 430, y: 612, width: 130, height: 46, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.6 });
-  page.drawText(`${matchScore(index)}%`, { x: 448, y: 629, size: 20, font: fonts.bold, color: PDF_GREEN });
-  page.drawText("MATCH SCORE", { x: 494, y: 634, size: 7.2, font: fonts.bold, color: PDF_GREEN });
+  page.drawText(`${matchScore(index)}%`, { x: 450, y: 630, size: 14, font: fonts.bold, color: PDF_GREEN });
+  page.drawText("MATCH SCORE", { x: 492, y: 634, size: 7, font: fonts.bold, color: PDF_GREEN });
   page.drawText("Brief fit", { x: 494, y: 622, size: 7.2, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
 
   drawImageFrame(page, images[0] || null, 36, 398, 524, 202);
@@ -1694,11 +1728,10 @@ type PdfContext = {
 
 async function buildDesignedPdf(clientName: string, properties: Array<Record<string, unknown>>, requirement: RequirementRow, broker: BrokerPdfProfile | null, reportId: string) {
   const pdfDoc = await PDFDocument.create();
-  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fonts = await loadPdfFonts(pdfDoc);
   const logo = await embedImageFromUrl(pdfDoc, BRAND_LOGO_URL);
   const brokerPhoto = broker?.profile_photo_url ? await embedImageFromUrl(pdfDoc, broker.profile_photo_url) : null;
-  const context: PdfContext = { pdfDoc, clientName, requirement, properties, broker, logo, brokerPhoto, fonts: { regular, bold }, reportId };
+  const context: PdfContext = { pdfDoc, clientName, requirement, properties, broker, logo, brokerPhoto, fonts, reportId };
 
   await drawCoverPage(pdfDoc, context);
   drawSummaryPage(context);
