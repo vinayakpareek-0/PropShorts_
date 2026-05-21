@@ -24,12 +24,48 @@ function highlights(value: PropertyRecommendationRow["highlights"]) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function firstImage(value: PropertyRecommendationRow["images"]) {
-  if (!Array.isArray(value)) return "";
-  const image = value.find((item) => item && typeof item === "object" && !Array.isArray(item) && "url" in item);
-  const record = image && typeof image === "object" && !Array.isArray(image) ? image as { url?: unknown } : null;
-  const url = typeof record?.url === "string" ? record.url : "";
-  return url.startsWith("http") ? url : "";
+function imageUrls(value: PropertyRecommendationRow["images"]) {
+  if (!Array.isArray(value)) return [];
+  const urls = value
+    .map((item) => {
+      const record = item && typeof item === "object" && !Array.isArray(item) ? item as { url?: unknown } : null;
+      const url = typeof record?.url === "string" ? record.url.trim() : "";
+      return url.startsWith("http") ? url : "";
+    })
+    .filter(Boolean);
+
+  return Array.from(new Set(urls));
+}
+
+function PropertyImage({
+  urls,
+  alt,
+}: {
+  urls: string[];
+  alt: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeUrl = urls[activeIndex] || "";
+
+  if (!activeUrl) {
+    return (
+      <div className="flex h-56 items-center justify-center bg-white text-[13px] font-semibold uppercase tracking-[0.18em] text-black/30 sm:h-full">
+        Property
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={activeUrl}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      className="h-56 w-full bg-white object-cover sm:h-full"
+      onError={() => {
+        setActiveIndex((current) => current + 1);
+      }}
+    />
+  );
 }
 
 function propertyLocation(property: PropertyRecommendationRow) {
@@ -189,21 +225,14 @@ function PackageContent({
           ) : (
             <div className="mt-6 grid gap-4">
               {properties.map((property, index) => {
-                const image = firstImage(property.images);
+                const images = imageUrls(property.images);
                 const chips = propertySpecs(property).slice(0, 4);
                 return (
                   <article key={property.id} className="grid overflow-hidden rounded-3xl bg-[#f5f5f5] sm:grid-cols-[220px_1fr]">
-                    {image ? (
-                      <img
-                        src={image}
-                        alt={property.title || "Property recommendation"}
-                        className="h-56 w-full bg-white object-cover sm:h-full"
-                      />
-                    ) : (
-                      <div className="flex h-56 items-center justify-center bg-white text-[13px] font-semibold uppercase tracking-[0.18em] text-black/30 sm:h-full">
-                        Property
-                      </div>
-                    )}
+                    <PropertyImage
+                      urls={images}
+                      alt={property.title || "Property recommendation"}
+                    />
                     <div className="min-w-0 p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
