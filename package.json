@@ -5,9 +5,9 @@
   "scripts": {
     "prebuild": "node scripts/assert-no-dev-server.mjs",
     "dev": "next dev",
-    "dev:clean": "rm -rf .next && next dev",
+    "dev:clean": "node scripts/clean-next.mjs && next dev",
     "render-worker": "node src/render-worker/server.mjs",
-    "build:clean": "rm -rf .next && npm run build",
+    "build:clean": "node scripts/clean-next.mjs && npm run build",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
