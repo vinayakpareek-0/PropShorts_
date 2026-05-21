@@ -1232,6 +1232,28 @@ function drawTextLines(
   });
 }
 
+function drawCenteredTextLines(
+  page: PdfPage,
+  lines: string[],
+  centerX: number,
+  y: number,
+  size: number,
+  font: PdfFont,
+  options: { color?: ReturnType<typeof rgb>; leading?: number } = {},
+) {
+  const leading = options.leading ?? size * 1.28;
+  lines.forEach((line, index) => {
+    const safeLine = pdfSafeText(line);
+    page.drawText(safeLine, {
+      x: centerX - font.widthOfTextAtSize(safeLine, size) / 2,
+      y: y - index * leading,
+      size,
+      font,
+      color: options.color ?? rgb(0, 0, 0),
+    });
+  });
+}
+
 async function fetchFontBytes(url: string) {
   const cached = fontBytesCache.get(url);
   if (cached) return cached;
@@ -1497,7 +1519,6 @@ async function drawCoverPage(pdfDoc: PDFDocument, context: PdfContext) {
   page.drawLine({ start: { x: 56, y: 568 }, end: { x: 84, y: 568 }, thickness: 2.4, color: PDF_GREEN });
   page.drawText("PREPARED FOR", { x: 54, y: 520, size: 9, font: fonts.bold, color: PDF_GRAY });
   page.drawText(pdfSafeText(clientName), { x: 54, y: 482, size: 27, font: fonts.bold, color: rgb(0, 0, 0) });
-  drawTextLines(page, wrapPdfText(`Here are ${properties.length} hand-picked properties that match what you are looking for.`, 44, 2), 54, 448, 12.5, fonts.regular, { color: rgb(0.18, 0.18, 0.18), leading: 18 });
   drawImageFrame(page, heroImage, 26, 215, A4_WIDTH - 52, 230);
 
   page.drawRectangle({ x: 26, y: 90, width: A4_WIDTH - 52, height: 92, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
@@ -1586,45 +1607,38 @@ async function drawOverviewPage(context: PdfContext) {
   const { pdfDoc, properties, logo, fonts } = context;
   const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   drawHeader(page, logo, fonts, "Property Overview", 3);
-  page.drawText(`Your ${properties.length} Best Matches`, { x: 36, y: 715, size: 36, font: fonts.regular, color: rgb(0, 0, 0) });
-  drawTextLines(page, wrapPdfText(`Here are ${properties.length} handpicked properties that best match your criteria and goals.`, 58, 2), 36, 675, 12, fonts.regular, { leading: 17 });
+  page.drawText(`Your ${properties.length} Best Matches`, { x: 36, y: 716, size: 32, font: fonts.regular, color: rgb(0, 0, 0) });
 
   const images = await Promise.all(properties.map((property) => embedImageFromUrl(pdfDoc, imageRefs(property.images)[0] || "")));
   properties.slice(0, 5).forEach((property, index) => {
-    const isWide = index === 4 || properties.length === 1;
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const x = isWide ? 36 : 36 + col * 265;
-    const y = isWide ? 180 : 520 - row * 188;
-    const w = isWide ? 524 : 248;
-    const h = isWide ? 112 : 154;
+    const x = 36;
+    const y = 555 - index * 126;
+    const w = A4_WIDTH - 72;
+    const h = 106;
     page.drawRectangle({ x, y, width: w, height: h, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
-    drawImageFrame(page, images[index], x + 6, y + 8, isWide ? 230 : 132, h - 16);
+    drawImageFrame(page, images[index], x + 8, y + 8, 130, h - 16);
     page.drawCircle({ x: x + 22, y: y + h - 24, size: 13, color: rgb(0, 0, 0) });
     page.drawText(String(index + 1), { x: x + 18, y: y + h - 29, size: 13, font: fonts.bold, color: rgb(1, 1, 1) });
     page.drawRectangle({ x: x + 14, y: y + 16, width: 76, height: 24, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.6 });
     page.drawText(`${matchScore(index)}%`, { x: x + 24, y: y + 26, size: 11.5, font: fonts.bold, color: PDF_GREEN });
     page.drawText("MATCH", { x: x + 55, y: y + 27, size: 6, font: fonts.bold, color: PDF_GREEN });
-    const tx = x + (isWide ? 255 : 152);
-    drawTextLines(page, wrapPdfText(propertyTitle(property, index), isWide ? 28 : 18, 2), tx, y + h - 34, 10.5, fonts.bold, { leading: 12 });
-    page.drawText(propertyLocation(property).slice(0, 25), { x: tx, y: y + h - 56, size: 8.5, font: fonts.regular, color: rgb(0, 0, 0) });
-    const specs = propertySpecs(property).slice(0, 3);
+    const tx = x + 158;
+    drawTextLines(page, wrapPdfText(propertyTitle(property, index), 36, 2), tx, y + h - 28, 10.5, fonts.bold, { leading: 12 });
+    page.drawText(propertyLocation(property).slice(0, 42), { x: tx, y: y + h - 56, size: 8.5, font: fonts.regular, color: rgb(0, 0, 0) });
+    const specs = propertySpecs(property).slice(0, 2);
     specs.forEach((spec, specIndex) => {
-      drawPdfIcon(page, spec.label === "BEDROOMS" ? "bed" : spec.label === "BATHROOMS" ? "bath" : spec.label === "SQFT" || spec.label === "SIZE" ? "size" : "home", tx, y + h - 89 - specIndex * 16, 9, PDF_GREEN);
-      page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx + 16, y: y + h - 84 - specIndex * 16, size: 8.3, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
+      drawPdfIcon(page, spec.label === "BEDROOMS" ? "bed" : spec.label === "BATHROOMS" ? "bath" : spec.label === "SQFT" || spec.label === "SIZE" ? "size" : "home", tx, y + 24 - specIndex * 15, 8, PDF_GREEN);
+      page.drawText(`${spec.value} ${spec.label.toLowerCase()}`, { x: tx + 14, y: y + 28 - specIndex * 15, size: 7.8, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
     });
-    page.drawText(pdfSafeText(property.price_label || "Price on request"), { x: tx, y: y + 30, size: 10, font: fonts.bold, color: rgb(0, 0, 0) });
+    drawFittedRightText(page, pdfSafeText(property.price_label || "Price on request"), x + w - 20, y + 22, 120, fonts.bold, { size: 9.5, minSize: 7.5 });
   });
 
-  page.drawRectangle({ x: 36, y: 82, width: A4_WIDTH - 72, height: 68, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.8 });
-  page.drawCircle({ x: 76, y: 116, size: 24, color: PDF_GREEN });
-  page.drawText("*", { x: 68, y: 105, size: 34, font: fonts.bold, color: rgb(0.92, 0.72, 0.25) });
-  page.drawText("TOP PICK", { x: 132, y: 127, size: 7, font: fonts.bold, color: PDF_GREEN });
-  page.drawText(propertyTitle(properties[0], 0).slice(0, 36), { x: 132, y: 108, size: 13, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawText("Excellent match across your criteria and budget goals.", { x: 132, y: 91, size: 9, font: fonts.regular, color: rgb(0.2, 0.2, 0.2) });
-  page.drawLine({ start: { x: 380, y: 92 }, end: { x: 380, y: 140 }, thickness: 0.6, color: PDF_BORDER });
-  page.drawText(`${matchScore(0)}%`, { x: 444, y: 113, size: 18, font: fonts.bold, color: PDF_GREEN });
-  page.drawText("MATCH SCORE", { x: 444, y: 98, size: 7.5, font: fonts.bold, color: PDF_GREEN });
+  page.drawRectangle({ x: 36, y: 82, width: A4_WIDTH - 72, height: 54, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawCircle({ x: 70, y: 109, size: 18, color: PDF_GREEN });
+  page.drawText("*", { x: 64, y: 101, size: 25, font: fonts.bold, color: rgb(0.92, 0.72, 0.25) });
+  page.drawText("TOP PICK", { x: 108, y: 116, size: 7, font: fonts.bold, color: PDF_GREEN });
+  page.drawText(propertyTitle(properties[0], 0).slice(0, 46), { x: 108, y: 99, size: 10.5, font: fonts.bold, color: rgb(0, 0, 0) });
+  page.drawText(`${matchScore(0)}% match`, { x: A4_WIDTH - 118, y: 104, size: 10, font: fonts.bold, color: PDF_GREEN });
   drawFooter(page, logo, fonts, 3);
 }
 
@@ -1721,8 +1735,7 @@ async function drawContactPage(context: PdfContext) {
   });
   page.drawRectangle({ x: 425, y: 265, width: 120, height: 90, color: PDF_SOFT });
   drawBrand(page, logo, fonts, 456, 334, 78);
-  page.drawText("Short videos. Smart matches.", { x: 440, y: 305, size: 8.5, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawText("Better decisions.", { x: 462, y: 290, size: 8.5, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawCenteredTextLines(page, ["Short videos.", "Smart matches.", "Better decisions."], 485, 306, 7.8, fonts.regular, { leading: 11 });
   page.drawRectangle({ x: 425, y: 170, width: 120, height: 70, color: PDF_SOFT });
   drawTextLines(page, wrapPdfText("My goal is simple: help you find a home you will love today and for years to come.", 24, 4), 440, 220, 8.5, fonts.regular, { leading: 12 });
   drawFooter(page, logo, fonts, pageNumber);
