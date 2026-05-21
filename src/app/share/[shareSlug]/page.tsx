@@ -2,14 +2,19 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import AppLayout from "@/components/layout/AppLayout";
+import PropShortsLogo from "@/components/PropShortsLogo";
 import {
+  briefFromRequirement,
   fetchGeneratedPackageByShareSlug,
   fetchPackageProperties,
+  refCode,
   shortDate,
   type GeneratedPackageRow,
   type PropertyRecommendationRow,
 } from "@/lib/propshorts/clientData";
+import { supabase } from "@/lib/supabase/client";
 
 interface SharePageProps {
   params: Promise<{ shareSlug: string }>;
@@ -27,6 +32,19 @@ function firstImage(value: PropertyRecommendationRow["images"]) {
   return url.startsWith("http") ? url : "";
 }
 
+function propertyLocation(property: PropertyRecommendationRow) {
+  return [property.area, property.city].filter(Boolean).join(", ") || "Location unavailable";
+}
+
+function propertySpecs(property: PropertyRecommendationRow) {
+  return [
+    property.bedrooms ? `${property.bedrooms} bed` : null,
+    property.bathrooms ? `${property.bathrooms} bath` : null,
+    property.size_label || (property.sqft ? `${property.sqft} sqft` : null),
+    property.property_type,
+  ].filter(Boolean);
+}
+
 function videoProperties(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return [];
   const properties = (input as { properties?: unknown }).properties;
@@ -38,8 +56,291 @@ function videoProperties(input: unknown) {
       id: typeof record.id === "string" ? record.id : `property-${index}`,
       title: typeof record.title === "string" ? record.title : `Property ${index + 1}`,
       area: [record.area, record.city].filter((value): value is string => typeof value === "string" && value.length > 0).join(", "),
+      price: typeof record.price_label === "string" ? record.price_label : "",
     };
   });
+}
+
+function ShareSkeleton() {
+  return (
+    <div className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.06]">
+      <p className="text-[13px] font-medium text-black/40">Loading shared package...</p>
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="h-72 rounded-3xl bg-[#f5f5f5]" />
+        <div className="h-72 rounded-3xl bg-[#f5f5f5]" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ error }: { error?: string }) {
+  return (
+    <div className="rounded-3xl bg-white p-8 text-center ring-1 ring-black/[0.06]">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-black/35">Shared package</p>
+      <h1 className="mt-3 text-[34px] font-light tracking-[-0.02em] text-black">Unavailable.</h1>
+      <p className="mx-auto mt-3 max-w-md text-[15px] leading-6 text-black/50">
+        {error || "This shared package is unavailable or not public."}
+      </p>
+    </div>
+  );
+}
+
+function PackageContent({
+  pkg,
+  properties,
+  loading,
+  error,
+  isLoggedIn,
+}: {
+  pkg: GeneratedPackageRow | null;
+  properties: PropertyRecommendationRow[];
+  loading: boolean;
+  error: string;
+  isLoggedIn: boolean;
+}) {
+  const clientName = pkg?.client_requirements?.client_name || "Client";
+  const brief = useMemo(
+    () => briefFromRequirement(pkg?.client_requirements ?? null),
+    [pkg],
+  );
+  const title = pkg?.package_title || `Property recommendations for ${clientName}`;
+  const video = pkg?.generated_videos;
+  const pdfUrl = pkg?.generated_pdfs?.pdf_url || "";
+  const renderedVideo = Boolean(video?.video_url && video.video_url.endsWith(".mp4"));
+  const videoPreviewProperties = videoProperties(video?.input_json);
+
+  if (loading) return <ShareSkeleton />;
+  if (error || !pkg) return <EmptyState error={error} />;
+
+  return (
+    <div className="mx-auto w-full max-w-7xl">
+      <header className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <section className="rounded-3xl bg-[#f5f5f5] p-7 ring-1 ring-black/[0.04] sm:p-9">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-black/35">
+            Shared package
+          </p>
+          <h1 className="mt-5 max-w-4xl text-[42px] font-light leading-[1.02] tracking-[-0.02em] text-black sm:text-[64px]">
+            {clientName}.
+          </h1>
+          <p className="mt-5 max-w-2xl text-[17px] leading-8 text-black/55">
+            {brief}
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            {pdfUrl ? (
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-black px-5 text-[14px] font-semibold text-white transition-opacity hover:opacity-85"
+              >
+                Open PDF Report
+              </a>
+            ) : null}
+            {video?.video_url ? (
+              <a
+                href="#propshort-video"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-white px-5 text-[14px] font-semibold text-black ring-1 ring-black/[0.06] transition-opacity hover:opacity-75"
+              >
+                Watch PropShort
+              </a>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.06]">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-black/35">Package details</p>
+          <div className="mt-6 space-y-4">
+            {[
+              ["Reference", refCode(pkg.id)],
+              ["Shared", shortDate(pkg.created_at)],
+              ["Properties", String(properties.length)],
+              ["Video", video ? (renderedVideo ? "Ready" : "Preview") : "Not included"],
+              ["PDF", pdfUrl ? "Ready" : "Not included"],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-5 border-b border-black/[0.06] pb-4 last:border-b-0 last:pb-0">
+                <p className="text-[13px] text-black/40">{label}</p>
+                <p className="text-right text-[14px] font-semibold text-black">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 rounded-2xl bg-[#c8cc7c] p-5">
+            <p className="text-[13px] font-semibold text-black">Prepared with PropShorts</p>
+            <p className="mt-2 text-[13px] leading-5 text-black/60">
+              A broker-ready shortlist with property context, report output, and a video package in one place.
+            </p>
+          </div>
+        </aside>
+      </header>
+
+      <section className="mt-6 grid gap-5 xl:grid-cols-[1fr_360px]">
+        <div className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.06]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-black/35">Shortlist</p>
+              <h2 className="mt-2 text-[28px] font-semibold text-black">Recommended properties</h2>
+            </div>
+            <p className="text-[14px] text-black/40">{properties.length} matches</p>
+          </div>
+
+          {properties.length === 0 ? (
+            <div className="mt-6 rounded-2xl bg-[#f5f5f5] p-5 text-[14px] text-black/45">
+              No property recommendations were saved for this package.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4">
+              {properties.map((property, index) => {
+                const image = firstImage(property.images);
+                const chips = propertySpecs(property).slice(0, 4);
+                return (
+                  <article key={property.id} className="grid overflow-hidden rounded-3xl bg-[#f5f5f5] sm:grid-cols-[220px_1fr]">
+                    {image ? (
+                      <img
+                        src={image}
+                        alt={property.title || "Property recommendation"}
+                        className="h-56 w-full bg-white object-cover sm:h-full"
+                      />
+                    ) : (
+                      <div className="flex h-56 items-center justify-center bg-white text-[13px] font-semibold uppercase tracking-[0.18em] text-black/30 sm:h-full">
+                        Property
+                      </div>
+                    )}
+                    <div className="min-w-0 p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-black/35">
+                            Match {index + 1}
+                          </p>
+                          <h3 className="mt-2 text-[22px] font-semibold leading-tight text-black">
+                            {property.title || "Property recommendation"}
+                          </h3>
+                          <p className="mt-1 text-[14px] text-black/45">{propertyLocation(property)}</p>
+                        </div>
+                        <p className="shrink-0 rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-black/55 ring-1 ring-black/[0.04]">
+                          {property.price_label || "Price on request"}
+                        </p>
+                      </div>
+
+                      {chips.length > 0 ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {chips.map((chip) => (
+                            <span key={chip} className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-black/55">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <p className="mt-4 line-clamp-2 text-[14px] leading-6 text-black/50">
+                        {property.headline || property.description || "A property option selected for this client brief."}
+                      </p>
+
+                      {highlights(property.highlights).length > 0 ? (
+                        <div className="mt-4 grid gap-2">
+                          {highlights(property.highlights).slice(0, 3).map((highlight) => (
+                            <p key={highlight} className="text-[13px] leading-5 text-black/50">
+                              <span className="mr-2 font-semibold text-black">+</span>
+                              {highlight}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-5">
+          <section id="propshort-video" className="rounded-3xl bg-black p-5 text-white">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-white/40">PropShort</p>
+            <h2 className="mt-2 text-[24px] font-semibold text-white">Video package</h2>
+            <div className="mt-5 overflow-hidden rounded-2xl bg-white/10">
+              {renderedVideo ? (
+                <video
+                  className="aspect-[9/16] max-h-[620px] w-full bg-black object-contain"
+                  src={video?.video_url || ""}
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <div className="min-h-[360px] bg-[#f5f5f5] p-5 text-black">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-black/35">Preview</p>
+                  <h3 className="mt-3 text-[28px] font-semibold leading-tight">{title}</h3>
+                  <div className="mt-6 grid gap-2">
+                    {(videoPreviewProperties.length ? videoPreviewProperties : properties.slice(0, 3)).map((property, index) => (
+                      <div key={property.id} className="rounded-2xl bg-white p-3">
+                        <p className="text-[14px] font-semibold text-black">{index + 1}. {property.title}</p>
+                        <p className="mt-1 text-[12px] text-black/45">
+                          {"area" in property ? property.area : propertyLocation(property)}
+                          {"price" in property && property.price ? ` - ${property.price}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="mt-4 text-[13px] leading-5 text-white/45">
+              {renderedVideo ? "Ready to watch and share." : "The video plan is ready; rendered MP4 may still be processing."}
+            </p>
+          </section>
+
+          {pdfUrl ? (
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-3xl bg-white p-6 ring-1 ring-black/[0.06] transition-opacity hover:opacity-80"
+            >
+              <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-black/35">PDF report</p>
+              <h2 className="mt-3 text-[24px] font-semibold text-black">Open client report</h2>
+              <p className="mt-2 text-[14px] leading-6 text-black/45">
+                Review the full recommendation report with property details and broker context.
+              </p>
+              <span className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-black px-5 text-[14px] font-semibold text-white">
+                Open PDF
+              </span>
+            </a>
+          ) : null}
+
+          {!isLoggedIn ? (
+            <section className="rounded-3xl bg-[#c8cc7c] p-6 text-black">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-black/45">Broker note</p>
+              <h2 className="mt-3 text-[22px] font-semibold leading-tight">Want changes?</h2>
+              <p className="mt-2 text-[14px] leading-6 text-black/60">
+                Ask your broker to refine the brief or generate a fresh package with updated requirements.
+              </p>
+            </section>
+          ) : null}
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function PublicShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-white text-black">
+      <header className="border-b border-black/[0.06] bg-white">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
+          <PropShortsLogo width={142} className="h-auto w-[142px]" />
+          <p className="hidden text-[12px] font-semibold uppercase tracking-[0.24em] text-black/35 sm:block">
+            Shared property package
+          </p>
+        </div>
+      </header>
+      <main className="px-5 py-6 sm:px-8 sm:py-8">{children}</main>
+      <footer className="mt-8 border-t border-black/[0.06] px-5 py-8 sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 text-[13px] text-black/40 sm:flex-row sm:items-center sm:justify-between">
+          <p>PropShorts</p>
+          <p>Short videos. Smart matches. Better decisions.</p>
+        </div>
+      </footer>
+    </div>
+  );
 }
 
 export default function SharePage({ params }: SharePageProps) {
@@ -48,6 +349,8 @@ export default function SharePage({ params }: SharePageProps) {
   const [properties, setProperties] = useState<PropertyRecommendationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +366,20 @@ export default function SharePage({ params }: SharePageProps) {
       cancelled = true;
     };
   }, [params]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setIsLoggedIn(Boolean(data.session));
+      setSessionChecked(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!shareSlug) return;
@@ -89,140 +406,15 @@ export default function SharePage({ params }: SharePageProps) {
     };
   }, [shareSlug]);
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-black text-xs font-bold text-white">
-              PS
-            </div>
-            <span className="font-semibold text-gray-900">PropShorts</span>
-          </div>
-          <p className="text-xs text-gray-400">Shared property recommendation</p>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        {error ? (
-          <div className="rounded-xl bg-red-50 p-5 text-sm text-red-600">{error}</div>
-        ) : loading ? (
-          <div className="rounded-xl bg-white p-5 text-sm text-gray-500 ring-1 ring-gray-200">Loading shared package...</div>
-        ) : !pkg ? (
-          <div className="rounded-xl bg-white p-5 text-sm text-gray-500 ring-1 ring-gray-200">
-            This shared package is unavailable or not public.
-          </div>
-        ) : (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{pkg.package_title || "Property recommendation package"}</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Shared via PropShorts · {shortDate(pkg.created_at)}
-              </p>
-            </div>
-
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Property Recommendations</h2>
-              {properties.length === 0 ? (
-                <div className="rounded-xl bg-white p-5 text-sm text-gray-500 ring-1 ring-gray-200">
-                  No property recommendations were saved for this package.
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                  {properties.map((property) => (
-                    <div key={property.id} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-                      {firstImage(property.images) ? (
-                        <img
-                          src={firstImage(property.images)}
-                          alt={property.title || "Property recommendation"}
-                          className="h-36 w-full bg-gray-100 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-36 items-center justify-center bg-gray-100 text-sm font-semibold text-gray-400">
-                          {property.property_type || "Property"}
-                        </div>
-                      )}
-                      <div className="p-4">
-                        <p className="line-clamp-1 font-semibold text-gray-900">{property.title || "Property recommendation"}</p>
-                        <p className="mt-0.5 text-sm text-gray-500">{[property.area, property.city].filter(Boolean).join(", ") || "Location unavailable"}</p>
-                        <p className="mt-1 text-sm font-medium text-black">
-                          {property.price_label || "Price unavailable"}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {highlights(property.highlights).slice(0, 3).map((highlight) => (
-                            <span key={highlight} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                              {highlight}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {pkg.generated_videos ? (
-              <div>
-                <h2 className="mb-4 text-lg font-semibold text-gray-900">PropShort Video</h2>
-                <div className="overflow-hidden rounded-xl bg-black p-4 text-white shadow-sm">
-                  {pkg.generated_videos.video_url?.endsWith(".mp4") ? (
-                    <video
-                      className="mx-auto aspect-[9/16] max-h-[680px] w-full rounded-lg bg-black object-contain"
-                      src={pkg.generated_videos.video_url}
-                      controls
-                      playsInline
-                      preload="metadata"
-                    />
-                  ) : (
-                  <div className="relative min-h-[360px] overflow-hidden rounded-lg bg-gradient-to-br from-[#d489ff] via-[#8ecae6] to-[#c8cc7c] p-6 text-black">
-                    <div className="absolute inset-3 rounded-lg bg-white/70" />
-                    <div className="relative z-10 flex min-h-[312px] flex-col justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.3em] text-black/45">PropShorts</p>
-                        <h3 className="mt-4 text-3xl font-black leading-tight">{pkg.package_title || "Property video preview"}</h3>
-                        <p className="mt-2 text-sm font-medium text-black/55">Generated Remotion plan preview</p>
-                      </div>
-                      <div className="grid gap-2">
-                        {videoProperties(pkg.generated_videos.input_json).map((property, index) => (
-                          <div key={property.id} className="rounded-lg bg-white/70 px-3 py-2">
-                            <p className="text-sm font-bold">{index + 1}. {property.title}</p>
-                            <p className="text-xs text-black/55">{property.area || "Property recommendation"}</p>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white">
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-6 w-6">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/45">Preview ready</p>
-                      </div>
-                    </div>
-                  </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            {pkg.generated_pdfs?.pdf_url ? (
-              <a
-                href={pkg.generated_pdfs.pdf_url}
-                className="flex items-center justify-between rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-colors hover:bg-gray-50"
-              >
-                <div>
-                  <p className="font-semibold text-gray-900">PDF Report</p>
-                  <p className="text-sm text-gray-500">Open the generated client report</p>
-                </div>
-                <span className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white">
-                  Open PDF
-                </span>
-              </a>
-            ) : null}
-          </div>
-        )}
-      </main>
-    </div>
+  const content = (
+    <PackageContent
+      pkg={pkg}
+      properties={properties}
+      loading={loading || !sessionChecked}
+      error={error}
+      isLoggedIn={isLoggedIn}
+    />
   );
+
+  return isLoggedIn ? <AppLayout>{content}</AppLayout> : <PublicShell>{content}</PublicShell>;
 }
