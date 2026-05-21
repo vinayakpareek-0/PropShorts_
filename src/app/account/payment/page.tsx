@@ -11,7 +11,7 @@ export default function PaymentPage() {
           </Link>
           <h1 className="mt-3 text-[40px] font-light leading-none tracking-[-0.02em] text-black sm:text-[56px]">Payment.</h1>
           <p className="mt-4 max-w-xl text-[15px] leading-6 text-black/50">
-            Stripe is not connected yet, so no payment methods are stored for this account.
+            Stripe checkout is connected from the Plan screen. Saved card management can be added here once the billing portal is enabled.
           </p>
         </header>
 
@@ -27,21 +27,21 @@ export default function PaymentPage() {
                 </div>
                 <div>
                   <p className="text-[20px] font-semibold text-black">No card on file</p>
-                  <p className="mt-1 text-[14px] text-black/45">The Starter plan is visible for testing, but checkout is disabled until Stripe is integrated.</p>
+                  <p className="mt-1 text-[14px] text-black/45">Upgrade through Plan to create or update the Stripe customer record.</p>
                 </div>
               </div>
             </div>
 
             <button className="mt-5 rounded-xl bg-black px-5 py-3 text-[14px] font-semibold text-white opacity-35" disabled>
-              Add Payment Method Later
+              Billing Portal Later
             </button>
           </section>
 
           <aside className="rounded-3xl bg-[#c8cc7c] p-6 text-black">
             <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-black/45">Current billing state</p>
-            <h2 className="mt-3 text-[24px] font-semibold leading-tight">Payments are not active.</h2>
+            <h2 className="mt-3 text-[24px] font-semibold leading-tight">Checkout is active.</h2>
             <p className="mt-3 text-[14px] leading-6 text-black/60">
-              No mock card or invoice data is shown here. Once Stripe is added, this page should read the customer and payment method records.
+              This page stays intentionally quiet until we add Stripe’s customer portal for invoices, cards, and cancellation controls.
             </p>
             <Link
               href="/account/subscription"

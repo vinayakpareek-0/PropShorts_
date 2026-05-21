@@ -19,7 +19,20 @@ export const STARTER_PLAN = {
   features: ["30 PropShort videos per month", "30 PDF reports per month", "Broker package dashboard", "Shareable package links"],
 };
 
+export const PRO_PLAN = {
+  id: "pro",
+  name: "Pro",
+  priceLabel: "$49/month",
+  monthlyPropShortLimit: 100,
+  monthlyPdfLimit: 100,
+  features: ["100 PropShort videos per month", "100 PDF reports per month", "Priority generation queue", "Higher monthly package volume"],
+};
+
+export const SUBSCRIPTION_PLANS = [FREE_PLAN, STARTER_PLAN, PRO_PLAN] as const;
+export type SubscriptionPlanId = (typeof SUBSCRIPTION_PLANS)[number]["id"];
+
 export type BrokerProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+export type BrokerSubscriptionRow = Database["public"]["Tables"]["broker_subscriptions"]["Row"];
 export type PropertyRecommendationRow = Database["public"]["Tables"]["property_recommendations"]["Row"];
 export type PropertyInternalTraceRow = Database["public"]["Tables"]["property_internal_traces"]["Row"];
 
@@ -280,6 +293,35 @@ export async function fetchUsageSummary() {
     packages: monthlyPackages.length,
     recent: packages.slice(0, 5),
   };
+}
+
+export async function fetchBrokerSubscription() {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  const user = authData.user;
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("broker_subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as BrokerSubscriptionRow | null) || null;
+}
+
+export async function createCheckoutSession(planId: Exclude<SubscriptionPlanId, "free">) {
+  const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+    body: { plan_id: planId },
+  });
+
+  if (error) throw error;
+  if (!data?.success || !data.checkout_url) {
+    throw new Error(data?.error || "Could not start Stripe checkout.");
+  }
+
+  return data.checkout_url as string;
 }
 
 export async function fetchPackageBrokerContacts(packageId: string) {
