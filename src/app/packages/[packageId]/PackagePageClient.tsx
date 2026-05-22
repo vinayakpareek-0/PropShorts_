@@ -44,6 +44,17 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
     let cancelled = false;
 
     async function loadPackage() {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const user = authData.user;
+
+      if (cancelled) return;
+
+      if (authError || !user) {
+        setError(authError?.message || "Please sign in to view this package.");
+        setLoading(false);
+        return;
+      }
+
       const { data, error: queryError } = await supabase
         .from("recommendation_packages")
         .select(`
@@ -53,6 +64,7 @@ export default function PackagePageClient({ packageId }: PackagePageClientProps)
           generated_videos (*)
         `)
         .eq("id", packageId)
+        .eq("user_id", user.id)
         .single();
 
       if (cancelled) return;

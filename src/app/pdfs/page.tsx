@@ -8,6 +8,7 @@ import PdfListItem from "@/components/lists/PdfListItem";
 import {
   briefFromRequirement,
   fetchGeneratedPackages,
+  packageDisplayName,
   type GeneratedPackageRow,
   refCode,
   shortDate,
@@ -125,10 +126,11 @@ export default function PdfsPage() {
                   key={item.id}
                   id={item.generated_pdfs?.id || item.pdf_id || item.id}
                   packageId={item.id}
-                  clientName={item.client_requirements?.client_name || "Client"}
+                  title={packageDisplayName(item)}
                   description={briefFromRequirement(item.client_requirements)}
                   refCode={refCode(item.id)}
                   date={shortDate(item.created_at)}
+                  shareSlug={item.share_slug}
                 />
               ))}
             </div>

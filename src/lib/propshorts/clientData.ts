@@ -93,6 +93,10 @@ export function briefFromRequirement(requirement: GeneratedPackageRow["client_re
   return [bedrooms, propertyType, location, purpose].filter(Boolean).join(" - ") || "Generated recommendation package";
 }
 
+export function packageDisplayName(item: GeneratedPackageRow) {
+  return item.package_title || item.client_requirements?.client_name || "Untitled PropShort";
+}
+
 export function refCode(id: string) {
   return id.slice(0, 8).toUpperCase();
 }
@@ -127,6 +131,11 @@ export async function copyText(value: string) {
 }
 
 export async function fetchGeneratedPackages() {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  const user = authData.user;
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from("recommendation_packages")
     .select(`
@@ -165,13 +174,13 @@ export async function fetchGeneratedPackages() {
         voiceover_script_json,
         input_json
       )
-    `);
+    `)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
 
-  return ((data || []) as GeneratedPackageRow[]).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
+  return (data || []) as GeneratedPackageRow[];
 }
 
 export async function fetchGeneratedPackageById(packageId: string) {

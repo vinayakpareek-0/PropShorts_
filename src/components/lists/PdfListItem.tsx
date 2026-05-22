@@ -2,29 +2,35 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { copyText, publicShareUrl } from "@/lib/propshorts/clientData";
 
 export interface PdfListItemProps {
   id: string;
   packageId: string;
-  clientName: string;
+  title: string;
   description: string;
   refCode: string;
   date: string;
+  shareSlug: string | null;
 }
 
 export default function PdfListItem({
   id,
   packageId,
-  clientName,
+  title,
   description,
   refCode,
   date,
+  shareSlug,
 }: PdfListItemProps) {
   const [shared, setShared] = useState(false);
 
-  function handleShare(e: React.MouseEvent) {
+  async function handleShare(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (!shareSlug) return;
+
+    await copyText(publicShareUrl(shareSlug));
     setShared(true);
     setTimeout(() => setShared(false), 1500);
   }
@@ -43,7 +49,7 @@ export default function PdfListItem({
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-[18px] font-semibold leading-tight text-black sm:text-[20px]">{clientName}</h3>
+          <h3 className="text-[18px] font-semibold leading-tight text-black sm:text-[20px]">{title}</h3>
           <p className="mt-0.5 text-[15px] text-black/60 line-clamp-1">{description}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="text-[12px] font-medium text-black/50 bg-[#f3f3f3] px-2.5 py-0.5 rounded-full">
@@ -70,7 +76,8 @@ export default function PdfListItem({
         {/* Share */}
         <button
           onClick={handleShare}
-          className="w-11 h-11 rounded-full bg-[#f3f3f3] flex items-center justify-center text-black hover:bg-[#e8e8e8] transition-colors"
+          disabled={!shareSlug}
+          className="w-11 h-11 rounded-full bg-[#f3f3f3] flex items-center justify-center text-black hover:bg-[#e8e8e8] transition-colors disabled:cursor-not-allowed disabled:opacity-35"
           aria-label="Share PDF"
         >
           {shared ? (

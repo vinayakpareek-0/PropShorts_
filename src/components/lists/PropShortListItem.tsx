@@ -2,33 +2,39 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { copyText, publicShareUrl } from "@/lib/propshorts/clientData";
 
 export interface PropShortListItemProps {
   id: string;
   pdfId: string;
   packageId: string;
-  clientName: string;
+  title: string;
   description: string;
   refCode: string;
   date: string;
   thumbColor: string;
+  shareSlug: string | null;
 }
 
 export default function PropShortListItem({
   id,
   pdfId,
   packageId,
-  clientName,
+  title,
   description,
   refCode,
   date,
   thumbColor,
+  shareSlug,
 }: PropShortListItemProps) {
   const [shared, setShared] = useState(false);
 
-  function handleShare(e: React.MouseEvent) {
+  async function handleShare(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (!shareSlug) return;
+
+    await copyText(publicShareUrl(shareSlug));
     setShared(true);
     setTimeout(() => setShared(false), 1500);
   }
@@ -49,7 +55,7 @@ export default function PropShortListItem({
 
         {/* Info */}
         <div className="flex flex-col min-w-0">
-          <h3 className="text-[14px] font-semibold leading-tight text-black">{clientName}</h3>
+          <h3 className="text-[14px] font-semibold leading-tight text-black truncate">{title}</h3>
           <p className="text-[13px] text-black/60 leading-tight truncate">{description}</p>
           <p className="text-[11px] text-black/40 mt-0.5 tracking-wide">REF: {refCode}</p>
         </div>
@@ -81,7 +87,8 @@ export default function PropShortListItem({
           {/* Share */}
           <button
             onClick={handleShare}
-            className="text-black hover:text-black/50 transition-colors"
+            disabled={!shareSlug}
+            className="text-black hover:text-black/50 transition-colors disabled:cursor-not-allowed disabled:opacity-35"
             aria-label="Share PropShort"
           >
             {shared ? (
