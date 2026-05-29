@@ -250,16 +250,16 @@ function brokerAvatar({ x, y, size, photoDataUri }) {
 }
 
 function agentBlock({ x = 64, y = 62, compact = false, broker, brokerPhotoDataUri = "" } = {}) {
-  const avatarSize = compact ? 82 : 92;
-  const nameSize = compact ? 28 : 30;
-  const detailSize = compact ? 25 : 27;
-  const lineGap = compact ? 30 : 32;
-  const textX = x + avatarSize + 28;
+  const avatarSize = compact ? 126 : 112;
+  const nameSize = compact ? 34 : 31;
+  const detailSize = compact ? 31 : 28;
+  const lineGap = compact ? 34 : 31;
+  const textX = x + avatarSize + 30;
   return `
     ${brokerAvatar({ x, y, size: avatarSize, photoDataUri: brokerPhotoDataUri })}
-    <text x="${textX}" y="${y + 30}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="800">${escapeXml(fit(brokerLine(broker), 24))}</text>
-    <text x="${textX}" y="${y + 30 + lineGap}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="700">${escapeXml(fit(broker.companyName, 28))}</text>
-    <text x="${textX}" y="${y + 30 + lineGap * 2}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="600">${escapeXml(fit(broker.phone, 24))}</text>
+    <text x="${textX}" y="${y + 36}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="800">${escapeXml(fit(brokerLine(broker), compact ? 19 : 24))}</text>
+    <text x="${textX}" y="${y + 36 + lineGap}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="700">${escapeXml(fit(broker.companyName, compact ? 21 : 28))}</text>
+    <text x="${textX}" y="${y + 36 + lineGap * 2}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="600">${escapeXml(fit(broker.phone, compact ? 18 : 24))}</text>
   `;
 }
 
@@ -301,17 +301,17 @@ function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataU
   const label = `Property ${propertyOrdinal(index)}`;
   const badge = metricLabel(property, imageIndex);
   const location = property.area || property.city || locationLabel(property);
-  const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 20, 3);
+  const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 19, 3);
   const badgeWidth = Math.max(132, Math.min(260, badge.length * 15 + 38));
   return baseSvg(`
-    ${agentBlock({ x: 64, y: 88, compact: true, broker, brokerPhotoDataUri })}
+    ${agentBlock({ x: 58, y: 88, compact: true, broker, brokerPhotoDataUri })}
     ${imagePanel(imageDataUri)}
     <rect x="64" y="750" width="${badgeWidth}" height="64" fill="#ffffff"/>
     <text x="88" y="793" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="31" font-weight="700">${escapeXml(badge)}</text>
-    <text x="64" y="910" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="26" font-weight="500">${escapeXml(label)}</text>
-    <text x="64" y="952" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="34" font-weight="800">${escapeXml(fit(location, 25))}</text>
-    <line x1="64" y1="990" x2="555" y2="990" stroke="#111111" stroke-width="1.3"/>
-    ${textBlock(headlineLines, { x: 64, y: 1060, size: 53, weight: 700, lineHeight: 1.02 })}
+    <text x="64" y="900" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="28" font-weight="500">${escapeXml(label)}</text>
+    <text x="64" y="944" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="40" font-weight="800">${escapeXml(fit(location, 22))}</text>
+    <line x1="64" y1="995" x2="555" y2="995" stroke="#111111" stroke-width="1.5"/>
+    ${textBlock(headlineLines, { x: 64, y: 1066, size: 56, weight: 500, lineHeight: 1.02 })}
     ${footerMark(logoDataUri)}
   `);
 }
@@ -327,9 +327,9 @@ function outroSlide(logoDataUri) {
 
 function closingSlide(logoDataUri, broker, brokerPhotoDataUri) {
   return baseSvg(`
-    ${textBlock(["Call", "me."], { x: 360, y: 460, size: 132, weight: 800, lineHeight: 0.78, anchor: "middle" })}
-    ${brokerAvatar({ x: 304, y: 735, size: 112, photoDataUri: brokerPhotoDataUri })}
-    ${textBlock([brokerLine(broker), broker.companyName, broker.phone], { x: 360, y: 920, size: 39, weight: 600, lineHeight: 1.12, anchor: "middle" })}
+    ${textBlock(["Call", "me."], { x: 360, y: 395, size: 158, weight: 800, lineHeight: 0.74, anchor: "middle" })}
+    ${brokerAvatar({ x: 286, y: 735, size: 148, photoDataUri: brokerPhotoDataUri })}
+    ${textBlock([brokerLine(broker), broker.companyName, broker.phone], { x: 360, y: 945, size: 43, weight: 500, lineHeight: 1.12, anchor: "middle" })}
     ${footerMark(logoDataUri)}
   `);
 }
