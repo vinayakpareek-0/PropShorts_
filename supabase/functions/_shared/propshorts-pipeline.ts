@@ -1077,8 +1077,24 @@ function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
+function fitPdfTextToWidth(value: string, font: PdfFont, size: number, maxWidth: number) {
+  const safeValue = pdfSafeText(value);
+  if (font.widthOfTextAtSize(safeValue, size) <= maxWidth) return safeValue;
+
+  let clipped = safeValue;
+  while (clipped.length > 0 && font.widthOfTextAtSize(`${clipped}...`, size) > maxWidth) {
+    clipped = clipped.slice(0, -1).trimEnd();
+  }
+  return clipped ? `${clipped}...` : "";
+}
+
 function wrapPdfTextByWidth(value: unknown, font: PdfFont, size: number, maxWidth: number, maxLines = 4): string[] {
-  const words = pdfSafeText(value).replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const words = pdfSafeText(value)
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => fitPdfTextToWidth(word, font, size, maxWidth));
   const lines: string[] = [];
   let current = "";
 
@@ -1688,15 +1704,17 @@ function drawComparisonTablePage(context: PdfContext) {
     color: rgb(0, 0, 0),
   });
 
+  const tableX = 36;
+  const tableWidth = A4_WIDTH - 72;
   const columns = [
-    { label: "Property", x: 36, width: 164 },
-    { label: "Size", x: 214, width: 86 },
-    { label: "Price", x: 314, width: 104 },
-    { label: "Features", x: 432, width: 128 },
+    { label: "Property", x: tableX, width: 180 },
+    { label: "Size", x: tableX + 190, width: 72 },
+    { label: "Price", x: tableX + 278, width: 114 },
+    { label: "Features", x: tableX + 406, width: 118 },
   ];
   const headerY = 640;
-  const rowHeight = 56;
-  const tableWidth = A4_WIDTH - 72;
+  const rowHeight = 66;
+  const cellPadding = 5;
 
   columns.forEach((column) => {
     page.drawText(column.label, {
@@ -1711,12 +1729,12 @@ function drawComparisonTablePage(context: PdfContext) {
   properties.slice(0, 5).forEach((property, index) => {
     const y = headerY - 38 - index * rowHeight;
     const rowColor = index % 2 === 0 ? rgb(0.9, 0.91, 0.91) : rgb(1, 1, 1);
-    page.drawRectangle({ x: 36, y: y - 8, width: tableWidth, height: rowHeight - 18, color: rowColor });
+    page.drawRectangle({ x: tableX, y: y - 12, width: tableWidth, height: rowHeight - 12, color: rowColor });
 
-    drawTextLines(page, wrapPdfText(propertyTitle(property, index), 22, 2), columns[0].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
-    drawTextLines(page, wrapPdfText(propertySizeLabel(property), 13, 2), columns[1].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
-    drawTextLines(page, wrapPdfText(pdfSafeText(property.price_label || "On request"), 17, 2), columns[2].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
-    drawTextLines(page, wrapPdfText(propertyFeatureSummary(property), 24, 2), columns[3].x + 4, y + 13, 9.7, fonts.regular, { leading: 11.5 });
+    drawTextLines(page, wrapPdfTextByWidth(propertyTitle(property, index), fonts.regular, 9.5, columns[0].width - cellPadding * 2, 3), columns[0].x + cellPadding, y + 22, 9.5, fonts.regular, { leading: 11 });
+    drawTextLines(page, wrapPdfTextByWidth(propertySizeLabel(property), fonts.regular, 9.2, columns[1].width - cellPadding * 2, 2), columns[1].x + cellPadding, y + 22, 9.2, fonts.regular, { leading: 11 });
+    drawTextLines(page, wrapPdfTextByWidth(pdfSafeText(property.price_label || "On request"), fonts.regular, 9.2, columns[2].width - cellPadding * 2, 2), columns[2].x + cellPadding, y + 22, 9.2, fonts.regular, { leading: 11 });
+    drawTextLines(page, wrapPdfTextByWidth(propertyFeatureSummary(property), fonts.regular, 8.6, columns[3].width - cellPadding * 2, 3), columns[3].x + cellPadding, y + 22, 8.6, fonts.regular, { leading: 10 });
   });
 
   page.drawRectangle({ x: 36, y: 120, width: tableWidth, height: 64, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.7 });
