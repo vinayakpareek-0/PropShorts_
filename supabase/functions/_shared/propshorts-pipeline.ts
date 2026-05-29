@@ -1452,6 +1452,18 @@ function averageNumber(properties: Array<Record<string, unknown>>, key: string) 
   return Number.isInteger(avg) ? String(avg) : avg.toFixed(1);
 }
 
+function propertySizeLabel(property: Record<string, unknown>) {
+  if (property.size_label) return pdfSafeText(property.size_label);
+  if (typeof property.sqft === "number") return `${property.sqft.toLocaleString("en-IN")} sq. ft.`;
+  return "On request";
+}
+
+function propertyFeatureSummary(property: Record<string, unknown>) {
+  const items = propertyHighlights(property, 2);
+  if (items.length > 0) return items.join(", ");
+  return pdfSafeText(property.headline || property.description || "Selected for the client brief.");
+}
+
 function drawFittedRightText(
   page: PdfPage,
   text: string,
@@ -1642,6 +1654,64 @@ async function drawOverviewPage(context: PdfContext) {
   drawFooter(page, logo, fonts, 3);
 }
 
+function drawComparisonTablePage(context: PdfContext) {
+  const { pdfDoc, properties, logo, fonts } = context;
+  const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  drawHeader(page, logo, fonts, "Comparison", 4);
+
+  page.drawText("Comparison Table", {
+    x: 36,
+    y: 704,
+    size: 42,
+    font: fonts.regular,
+    color: rgb(0, 0, 0),
+  });
+
+  const columns = [
+    { label: "Property", x: 36, width: 164 },
+    { label: "Size", x: 214, width: 86 },
+    { label: "Price", x: 314, width: 104 },
+    { label: "Features", x: 432, width: 128 },
+  ];
+  const headerY = 640;
+  const rowHeight = 56;
+  const tableWidth = A4_WIDTH - 72;
+
+  columns.forEach((column) => {
+    page.drawText(column.label, {
+      x: column.x,
+      y: headerY,
+      size: 13.5,
+      font: fonts.regular,
+      color: rgb(0.05, 0.05, 0.05),
+    });
+  });
+
+  properties.slice(0, 5).forEach((property, index) => {
+    const y = headerY - 38 - index * rowHeight;
+    const rowColor = index % 2 === 0 ? rgb(0.9, 0.91, 0.91) : rgb(1, 1, 1);
+    page.drawRectangle({ x: 36, y: y - 8, width: tableWidth, height: rowHeight - 18, color: rowColor });
+
+    drawTextLines(page, wrapPdfText(propertyTitle(property, index), 22, 2), columns[0].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
+    drawTextLines(page, wrapPdfText(propertySizeLabel(property), 13, 2), columns[1].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
+    drawTextLines(page, wrapPdfText(pdfSafeText(property.price_label || "On request"), 17, 2), columns[2].x + 4, y + 13, 10.3, fonts.regular, { leading: 12 });
+    drawTextLines(page, wrapPdfText(propertyFeatureSummary(property), 24, 2), columns[3].x + 4, y + 13, 9.7, fonts.regular, { leading: 11.5 });
+  });
+
+  page.drawRectangle({ x: 36, y: 120, width: tableWidth, height: 64, color: PDF_SOFT, borderColor: PDF_BORDER, borderWidth: 0.7 });
+  page.drawText("How to use this table", { x: 56, y: 157, size: 12, font: fonts.bold, color: rgb(0, 0, 0) });
+  drawTextLines(
+    page,
+    wrapPdfText("Compare the shortlist quickly across space, price, and standout features before choosing which homes to review or inspect first.", 82, 2),
+    56,
+    139,
+    9.5,
+    fonts.regular,
+    { color: rgb(0.2, 0.2, 0.2), leading: 13 },
+  );
+  drawFooter(page, logo, fonts, 4);
+}
+
 function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: PdfFonts, y: number) {
   const specs = propertySpecs(property).slice(0, 5);
   const width = 520 / Math.max(1, specs.length);
@@ -1656,7 +1726,7 @@ function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: Pd
 
 async function drawPropertyDetailPage(context: PdfContext, property: Record<string, unknown>, index: number) {
   const { pdfDoc, properties, logo, fonts } = context;
-  const pageNumber = 4 + index;
+  const pageNumber = 5 + index;
   const images = await embedPropertyImageSet(pdfDoc, property);
   const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   drawHeader(page, logo, fonts, "Property Match Report", pageNumber);
@@ -1700,7 +1770,7 @@ async function drawPropertyDetailPage(context: PdfContext, property: Record<stri
 
 async function drawContactPage(context: PdfContext) {
   const { pdfDoc, properties, broker, logo, fonts, brokerPhoto } = context;
-  const pageNumber = 4 + properties.length;
+  const pageNumber = 5 + properties.length;
   const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   drawHeader(page, logo, fonts, "Property Match Report", pageNumber);
   page.drawText("Let's take the next step.", { x: 42, y: 650, size: 29, font: fonts.bold, color: rgb(0, 0, 0) });
@@ -1763,6 +1833,7 @@ async function buildDesignedPdf(clientName: string, properties: Array<Record<str
   await drawCoverPage(pdfDoc, context);
   drawSummaryPage(context);
   await drawOverviewPage(context);
+  drawComparisonTablePage(context);
   for (const [index, property] of properties.entries()) {
     await drawPropertyDetailPage(context, property, index);
   }
@@ -1824,7 +1895,7 @@ export async function generatePdfRecord(supabase: SupabaseClient, run: RunRow, r
       user_id: run.user_id,
       run_id: run.id,
       pdf_url: pdfUrl,
-      page_count: pdfProperties.length + 4,
+      page_count: pdfProperties.length + 5,
       input_json: { title, clientName, properties: pdfProperties, brokerProfile, reportId, storagePath },
       status: "completed",
       completed_at: new Date().toISOString(),
