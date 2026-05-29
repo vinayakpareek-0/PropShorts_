@@ -1821,7 +1821,7 @@ async function drawContactPage(context: PdfContext) {
   const panelInnerWidth = panelWidth - panelPadding * 2;
   const panelCenterX = panelX + panelWidth / 2;
 
-  page.drawRectangle({ x: panelX, y: 145, width: panelWidth, height: 500, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  page.drawRectangle({ x: panelX, y: 250, width: panelWidth, height: 395, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
   drawCenteredTextLines(page, ["YOUR PROPERTY", "EXPERT"], panelCenterX, 608, 7.5, fonts.bold, { leading: 9.5 });
   page.drawLine({ start: { x: panelCenterX - 14, y: 586 }, end: { x: panelCenterX + 14, y: 586 }, thickness: 1, color: PDF_GREEN });
   drawImageFrame(page, brokerPhoto, 445, 508, 80, 62);
@@ -1832,19 +1832,11 @@ async function drawContactPage(context: PdfContext) {
     drawPdfIcon(page, ["phone", "mail", "web"][index], panelInnerX, y, 10.5, PDF_GREEN);
     drawTextLines(page, wrapPdfTextByWidth(item, fonts.regular, 7.4, panelInnerWidth - 18, 1), panelInnerX + 18, y + 3, 7.4, fonts.regular, { color: rgb(0.12, 0.12, 0.12) });
   });
-  page.drawRectangle({ x: 425, y: 265, width: 120, height: 90, color: PDF_SOFT });
-  drawBrand(page, logo, fonts, 456, 334, 78);
-  drawCenteredTextLines(page, ["Short videos.", "Smart matches.", "Better decisions."], panelCenterX, 306, 7, fonts.regular, { leading: 10 });
-  page.drawRectangle({ x: 425, y: 170, width: 120, height: 70, color: PDF_SOFT });
-  drawTextLines(
-    page,
-    wrapPdfTextByWidth("My goal is simple: help you find a home you will love today and for years to come.", fonts.regular, 7, 94, 5),
-    438,
-    222,
-    7,
-    fonts.regular,
-    { leading: 9.2 },
-  );
+  page.drawLine({ start: { x: panelInnerX, y: 330 }, end: { x: panelX + panelWidth - panelPadding, y: 330 }, thickness: 0.7, color: PDF_BORDER });
+  drawCenteredTextLines(page, ["Short videos.", "Smart matches.", "Better decisions."], panelCenterX, 304, 9, fonts.medium, {
+    color: rgb(0.08, 0.08, 0.08),
+    leading: 13,
+  });
   drawFooter(page, logo, fonts, pageNumber);
 }
 
