@@ -1656,8 +1656,9 @@ async function drawOverviewPage(context: PdfContext) {
 
 function drawComparisonTablePage(context: PdfContext) {
   const { pdfDoc, properties, logo, fonts } = context;
+  const pageNumber = 4 + properties.length;
   const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-  drawHeader(page, logo, fonts, "Comparison", 4);
+  drawHeader(page, logo, fonts, "Comparison", pageNumber);
 
   page.drawText("Comparison Table", {
     x: 36,
@@ -1709,7 +1710,7 @@ function drawComparisonTablePage(context: PdfContext) {
     fonts.regular,
     { color: rgb(0.2, 0.2, 0.2), leading: 13 },
   );
-  drawFooter(page, logo, fonts, 4);
+  drawFooter(page, logo, fonts, pageNumber);
 }
 
 function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: PdfFonts, y: number) {
@@ -1726,7 +1727,7 @@ function drawSpecRow(page: PdfPage, property: Record<string, unknown>, fonts: Pd
 
 async function drawPropertyDetailPage(context: PdfContext, property: Record<string, unknown>, index: number) {
   const { pdfDoc, properties, logo, fonts } = context;
-  const pageNumber = 5 + index;
+  const pageNumber = 4 + index;
   const images = await embedPropertyImageSet(pdfDoc, property);
   const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   drawHeader(page, logo, fonts, "Property Match Report", pageNumber);
@@ -1833,10 +1834,10 @@ async function buildDesignedPdf(clientName: string, properties: Array<Record<str
   await drawCoverPage(pdfDoc, context);
   drawSummaryPage(context);
   await drawOverviewPage(context);
-  drawComparisonTablePage(context);
   for (const [index, property] of properties.entries()) {
     await drawPropertyDetailPage(context, property, index);
   }
+  drawComparisonTablePage(context);
   await drawContactPage(context);
 
   return await pdfDoc.save();
