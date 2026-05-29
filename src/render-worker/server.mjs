@@ -84,6 +84,10 @@ function fit(value, max = 78) {
   return text.length > max ? `${text.slice(0, max - 1).trim()}...` : text;
 }
 
+function fitBadgeText(value, max = 18) {
+  return fit(String(value || ""), max).toUpperCase();
+}
+
 function compact(values) {
   return values.filter((value) => typeof value === "string" && value.trim().length > 0);
 }
@@ -299,19 +303,20 @@ function propertyOrdinal(index) {
 
 function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataUri, broker, brokerPhotoDataUri) {
   const label = `Property ${propertyOrdinal(index)}`;
-  const badge = metricLabel(property, imageIndex);
+  const badge = fitBadgeText(metricLabel(property, imageIndex));
   const location = property.area || property.city || locationLabel(property);
-  const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 19, 3);
-  const badgeWidth = Math.max(132, Math.min(260, badge.length * 15 + 38));
+  const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 21, 3);
+  const badgeWidth = Math.max(132, Math.min(300, badge.length * 13 + 38));
+  const badgeSize = badge.length > 16 ? 24 : badge.length > 12 ? 27 : 31;
   return baseSvg(`
     ${agentBlock({ x: 58, y: 88, compact: true, broker, brokerPhotoDataUri })}
     ${imagePanel(imageDataUri)}
     <rect x="64" y="750" width="${badgeWidth}" height="64" fill="#ffffff"/>
-    <text x="88" y="793" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="31" font-weight="700">${escapeXml(badge)}</text>
+    <text x="88" y="793" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${badgeSize}" font-weight="700">${escapeXml(badge)}</text>
     <text x="64" y="900" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="28" font-weight="500">${escapeXml(label)}</text>
     <text x="64" y="944" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="40" font-weight="800">${escapeXml(fit(location, 22))}</text>
     <line x1="64" y1="995" x2="555" y2="995" stroke="#111111" stroke-width="1.5"/>
-    ${textBlock(headlineLines, { x: 64, y: 1066, size: 56, weight: 500, lineHeight: 1.02 })}
+    ${textBlock(headlineLines, { x: 64, y: 1058, size: 48, weight: 500, lineHeight: 1.02 })}
     ${footerMark(logoDataUri)}
   `);
 }
