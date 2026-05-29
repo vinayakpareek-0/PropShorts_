@@ -12,7 +12,7 @@ const port = Number(process.env.PORT || 3001);
 const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
 const imageFetchTimeoutMs = Number(process.env.REMOTION_IMAGE_FETCH_TIMEOUT_MS || 4500);
-const maxVideoImagesPerProperty = Number(process.env.REMOTION_IMAGES_PER_PROPERTY || 1);
+const maxVideoImagesPerProperty = Number(process.env.REMOTION_IMAGES_PER_PROPERTY || 3);
 const fps = 24;
 const activeRenders = new Set();
 let cachedLogoDataUri = null;
@@ -114,6 +114,22 @@ function locationLabel(property) {
   return compact([property.area, property.city]).join(", ") || "Location on request";
 }
 
+function brokerProfileFromInput(input) {
+  const profile = input && typeof input === "object" && input.brokerProfile && typeof input.brokerProfile === "object"
+    ? input.brokerProfile
+    : {};
+  return {
+    fullName: typeof profile.full_name === "string" && profile.full_name.trim() ? profile.full_name.trim() : "Your Property Expert",
+    companyName: typeof profile.company_name === "string" && profile.company_name.trim() ? profile.company_name.trim() : "PropShorts Real Estate",
+    phone: typeof profile.phone === "string" && profile.phone.trim() ? profile.phone.trim() : "Contact via broker",
+    photoUrl: typeof profile.profile_photo_url === "string" && /^https?:\/\//i.test(profile.profile_photo_url) ? profile.profile_photo_url : null,
+  };
+}
+
+function brokerLine(profile) {
+  return `${profile.fullName} @`;
+}
+
 function runFfmpeg(args, videoId) {
   if (!ffmpegPath) throw new Error("FFmpeg binary is not available");
 
@@ -176,9 +192,9 @@ function wrapText(value, maxChars = 28, maxLines = 4) {
   return lines.length > 0 ? lines : [""];
 }
 
-function textBlock(lines, { x, y, size, weight = 500, color = "#080808", lineHeight = 1.22, letterSpacing = 0 }) {
+function textBlock(lines, { x, y, size, weight = 500, color = "#080808", lineHeight = 1.22, letterSpacing = 0, anchor = "start" }) {
   return lines.map((line, index) => (
-    `<text x="${x}" y="${y + index * size * lineHeight}" fill="${color}" font-family="Arial, Helvetica, sans-serif" font-size="${size}" font-weight="${weight}" letter-spacing="${letterSpacing}">${escapeXml(line)}</text>`
+    `<text x="${x}" y="${y + index * size * lineHeight}" text-anchor="${anchor}" fill="${color}" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${size}" font-weight="${weight}" letter-spacing="${letterSpacing}">${escapeXml(line)}</text>`
   )).join("");
 }
 
@@ -192,7 +208,7 @@ function baseSvg(content) {
       <stop offset="1" stop-color="#c8cc7c"/>
     </linearGradient>
   </defs>
-  <rect width="720" height="1280" fill="#f3f3f1"/>
+  <rect width="720" height="1280" fill="#ffffff"/>
   ${content}
 </svg>`;
 }
@@ -204,56 +220,61 @@ function brandImage(logoDataUri, x, y, width = 118, height = 52) {
 
   return `
     <rect x="${x}" y="${y + 11}" width="26" height="26" rx="2" fill="#080808"/>
-    <text x="${x + 40}" y="${y + 31}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900">propshorts</text>
+    <text x="${x + 40}" y="${y + 31}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="20" font-weight="900">propshorts</text>
   `;
 }
 
 function footerMark(logoDataUri) {
   return `
-    <text x="64" y="1204" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">PS 903</text>
+    <text x="64" y="1210" fill="#111111" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="22" font-weight="700">PS 903</text>
     ${brandImage(logoDataUri, 512, 1174, 112, 50)}
-    <rect x="64" y="1234" width="592" height="10" fill="#080808"/>
   `;
 }
 
-function agentBlock({ x = 64, y = 62, compact = false, logoDataUri = "" } = {}) {
-  const brandWidth = compact ? 102 : 118;
-  const nameSize = compact ? 17 : 19;
-  const lineGap = compact ? 18 : 20;
-  const textX = x + brandWidth + 16;
+function brokerAvatar({ x, y, size, photoDataUri }) {
+  if (photoDataUri) {
+    return `
+      <clipPath id="brokerAvatar${x}${y}"><rect x="${x}" y="${y}" width="${size}" height="${size}" rx="5"/></clipPath>
+      <image href="${photoDataUri}" x="${x}" y="${y}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice" clip-path="url(#brokerAvatar${x}${y})"/>
+    `;
+  }
+
   return `
-    ${brandImage(logoDataUri, x, y - 2, brandWidth, compact ? 45 : 52)}
-    <text x="${textX}" y="${y + 18}" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="700">PropShorts Broker</text>
-    <text x="${textX}" y="${y + 18 + lineGap}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">PropShorts Real Estate</text>
-    <text x="${textX}" y="${y + 18 + lineGap * 2}" fill="#222222" font-family="Arial, Helvetica, sans-serif" font-size="${compact ? 14 : 16}" font-weight="500">Contact via broker</text>
+    <rect x="${x}" y="${y}" width="${size}" height="${size}" rx="5" fill="#075c31"/>
+    <path d="M${x + size * 0.48} ${y + size * 0.22} L${x + size * 0.28} ${y + size * 0.64} L${x + size * 0.68} ${y + size * 0.64} Z" fill="none" stroke="#d6a753" stroke-width="${size * 0.06}" stroke-linejoin="round"/>
+    <path d="M${x + size * 0.42} ${y + size * 0.42} L${x + size * 0.62} ${y + size * 0.54}" stroke="#d6a753" stroke-width="${size * 0.05}" stroke-linecap="round"/>
+    <path d="M${x + size * 0.38} ${y + size * 0.54} L${x + size * 0.62} ${y + size * 0.64}" stroke="#d6a753" stroke-width="${size * 0.05}" stroke-linecap="round"/>
+    <path d="M${x + size * 0.49} ${y + size * 0.64} L${x + size * 0.49} ${y + size * 0.80}" stroke="#d6a753" stroke-width="${size * 0.06}" stroke-linecap="round"/>
+    <path d="M${x + size * 0.39} ${y + size * 0.82} L${x + size * 0.59} ${y + size * 0.82}" stroke="#d6a753" stroke-width="${size * 0.06}" stroke-linecap="round"/>
   `;
 }
 
-function introGreetingSlide(clientName, logoDataUri) {
-  return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${brandImage(logoDataUri, 154, 192, 132, 58)}
-    ${textBlock(["Hi"], { x: 154, y: 518, size: 148, weight: 900, lineHeight: 0.9 })}
-    ${textBlock([`${fit(clientName, 20)}.`], { x: 160, y: 612, size: 44, weight: 700, lineHeight: 1 })}
-    ${footerMark(logoDataUri)}
-  `);
+function agentBlock({ x = 64, y = 62, compact = false, broker, brokerPhotoDataUri = "" } = {}) {
+  const avatarSize = compact ? 82 : 92;
+  const nameSize = compact ? 28 : 30;
+  const detailSize = compact ? 25 : 27;
+  const lineGap = compact ? 30 : 32;
+  const textX = x + avatarSize + 28;
+  return `
+    ${brokerAvatar({ x, y, size: avatarSize, photoDataUri: brokerPhotoDataUri })}
+    <text x="${textX}" y="${y + 30}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="800">${escapeXml(fit(brokerLine(broker), 24))}</text>
+    <text x="${textX}" y="${y + 30 + lineGap}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="700">${escapeXml(fit(broker.companyName, 28))}</text>
+    <text x="${textX}" y="${y + 30 + lineGap * 2}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="600">${escapeXml(fit(broker.phone, 24))}</text>
+  `;
 }
 
-function introContextSlide(logoDataUri) {
+function introContextSlide(logoDataUri, broker, brokerPhotoDataUri) {
   return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${textBlock(["Check", "Out", "These", "Properties!"], { x: 160, y: 360, size: 58, weight: 900, lineHeight: 0.94 })}
-    ${agentBlock({ x: 160, y: 690, logoDataUri })}
+    ${textBlock(["Check", "Out", "These", "Properties!"], { x: 116, y: 410, size: 74, weight: 800, lineHeight: 0.96 })}
+    ${agentBlock({ x: 116, y: 860, broker, brokerPhotoDataUri })}
     ${footerMark(logoDataUri)}
   `);
 }
 
 function propertyNumberSlide(index, logoDataUri) {
   return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${brandImage(logoDataUri, 96, 132, 118, 52)}
-    <circle cx="360" cy="610" r="112" fill="#080808"/>
-    <text x="360" y="655" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="128" font-weight="900">${index + 1}</text>
+    <circle cx="360" cy="610" r="150" fill="#080808"/>
+    <text x="360" y="670" text-anchor="middle" fill="#ffffff" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="172" font-weight="800">${index + 1}</text>
     ${footerMark(logoDataUri)}
   `);
 }
@@ -261,52 +282,54 @@ function propertyNumberSlide(index, logoDataUri) {
 function imagePanel(imageDataUri) {
   if (!imageDataUri) {
     return `
-      <rect x="64" y="210" width="592" height="548" fill="url(#bg)"/>
-      <rect x="64" y="210" width="592" height="548" fill="rgba(255,255,255,0.22)"/>
+      <rect x="0" y="260" width="720" height="570" fill="url(#bg)"/>
+      <rect x="0" y="260" width="720" height="570" fill="rgba(255,255,255,0.22)"/>
     `;
   }
 
   return `
-    <clipPath id="photoClip"><rect x="64" y="210" width="592" height="548"/></clipPath>
-    <image href="${imageDataUri}" x="64" y="210" width="592" height="548" preserveAspectRatio="xMidYMid slice" clip-path="url(#photoClip)"/>
+    <clipPath id="photoClip"><rect x="0" y="260" width="720" height="570"/></clipPath>
+    <image href="${imageDataUri}" x="0" y="260" width="720" height="570" preserveAspectRatio="xMidYMid slice" clip-path="url(#photoClip)"/>
   `;
 }
 
-function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataUri) {
-  const label = `Property ${index + 1}`;
+function propertyOrdinal(index) {
+  return ["One", "Two", "Three", "Four", "Five"][index] || String(index + 1);
+}
+
+function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataUri, broker, brokerPhotoDataUri) {
+  const label = `Property ${propertyOrdinal(index)}`;
   const badge = metricLabel(property, imageIndex);
-  const location = locationLabel(property);
+  const location = property.area || property.city || locationLabel(property);
+  const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 20, 3);
+  const badgeWidth = Math.max(132, Math.min(260, badge.length * 15 + 38));
   return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${agentBlock({ x: 96, y: 122, compact: true, logoDataUri })}
+    ${agentBlock({ x: 64, y: 88, compact: true, broker, brokerPhotoDataUri })}
     ${imagePanel(imageDataUri)}
-    <rect x="96" y="708" width="${Math.max(112, badge.length * 12)}" height="44" fill="#ffffff"/>
-    <text x="116" y="736" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="900">${escapeXml(badge)}</text>
-    <text x="96" y="824" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="500">${escapeXml(label)}</text>
-    <text x="96" y="860" fill="#080808" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="900">${escapeXml(fit(location, 26))}</text>
-    <line x1="96" y1="894" x2="540" y2="894" stroke="#111111" stroke-width="1"/>
-    ${textBlock(wrapText(property.headline || property.description || "A strong match for the brief.", 18, 3), { x: 96, y: 956, size: 40, weight: 850, lineHeight: 1.04 })}
+    <rect x="64" y="750" width="${badgeWidth}" height="64" fill="#ffffff"/>
+    <text x="88" y="793" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="31" font-weight="700">${escapeXml(badge)}</text>
+    <text x="64" y="910" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="26" font-weight="500">${escapeXml(label)}</text>
+    <text x="64" y="952" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="34" font-weight="800">${escapeXml(fit(location, 25))}</text>
+    <line x1="64" y1="990" x2="555" y2="990" stroke="#111111" stroke-width="1.3"/>
+    ${textBlock(headlineLines, { x: 64, y: 1060, size: 53, weight: 700, lineHeight: 1.02 })}
     ${footerMark(logoDataUri)}
   `);
 }
 
 function outroSlide(logoDataUri) {
   return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${brandImage(logoDataUri, 168, 206, 132, 58)}
-    <rect x="168" y="392" width="230" height="90" rx="10" fill="#080808"/>
-    <text x="283" y="455" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="900">PDF</text>
-    ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 168, y: 560, size: 30, weight: 800, lineHeight: 1.04 })}
+    <rect x="96" y="410" width="528" height="112" rx="12" fill="#080808"/>
+    <text x="360" y="494" text-anchor="middle" fill="#ffffff" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="104" font-weight="500">PDF</text>
+    ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 360, y: 645, size: 41, weight: 600, lineHeight: 1.02, anchor: "middle" })}
     ${footerMark(logoDataUri)}
   `);
 }
 
-function closingSlide(script, logoDataUri) {
+function closingSlide(logoDataUri, broker, brokerPhotoDataUri) {
   return baseSvg(`
-    <rect x="64" y="88" width="592" height="1040" fill="#ffffff"/>
-    ${textBlock(["Call", "me."], { x: 168, y: 390, size: 90, weight: 900, lineHeight: 0.86 })}
-    ${agentBlock({ x: 168, y: 680, logoDataUri })}
-    ${textBlock(wrapText(script || "Let me know which one stands out and I will take care of the next steps for you.", 28, 4), { x: 168, y: 850, size: 25, color: "#333333", lineHeight: 1.22 })}
+    ${textBlock(["Call", "me."], { x: 360, y: 460, size: 132, weight: 800, lineHeight: 0.78, anchor: "middle" })}
+    ${brokerAvatar({ x: 304, y: 735, size: 112, photoDataUri: brokerPhotoDataUri })}
+    ${textBlock([brokerLine(broker), broker.companyName, broker.phone], { x: 360, y: 920, size: 39, weight: 600, lineHeight: 1.12, anchor: "middle" })}
     ${footerMark(logoDataUri)}
   `);
 }
@@ -368,7 +391,7 @@ function concatFilePath(value) {
   return String(value).replace(/'/g, "'\\''");
 }
 
-async function renderVideoWithFfmpeg({ videoId, outputLocation, clientName, script, properties }) {
+async function renderVideoWithFfmpeg({ videoId, outputLocation, broker, properties }) {
   const propertyLines = properties.slice(0, 5);
   while (propertyLines.length < 1) {
     propertyLines.push({
@@ -386,10 +409,10 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, clientName, scri
   }
 
   const logoDataUri = await getLogoDataUri();
+  const brokerPhotoDataUri = broker.photoUrl ? await imageDataUri(broker.photoUrl) : "";
   const imageMap = await preloadPropertyImages(propertyLines);
   const slides = [
-    { duration: 4, svg: introGreetingSlide(clientName, logoDataUri) },
-    { duration: 6, svg: introContextSlide(logoDataUri) },
+    { duration: 4, svg: introContextSlide(logoDataUri, broker, brokerPhotoDataUri) },
   ];
 
   for (const [propertyIndex, property] of propertyLines.entries()) {
@@ -397,12 +420,12 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, clientName, scri
     for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
       const imageUrl = property.images[Math.min(imageIndex, property.images.length - 1)] || property.images[0] || null;
       const image = imageUrl ? imageMap.get(imageUrl) || null : null;
-      slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image, logoDataUri) });
+      slides.push({ duration: 7 / 3, svg: propertyImageSlide(property, propertyIndex, imageIndex, image, logoDataUri, broker, brokerPhotoDataUri) });
     }
   }
 
   slides.push({ duration: 4, svg: outroSlide(logoDataUri) });
-  slides.push({ duration: 6, svg: closingSlide(script, logoDataUri) });
+  slides.push({ duration: 5, svg: closingSlide(logoDataUri, broker, brokerPhotoDataUri) });
 
   const slideFiles = [];
   for (const [index, slide] of slides.entries()) {
@@ -465,15 +488,14 @@ async function renderVideo(videoId, accessToken) {
     .eq("id", videoId);
 
   const input = video.input_json && typeof video.input_json === "object" ? video.input_json : {};
-  const clientName = typeof input.clientName === "string" ? input.clientName : "Client";
+  const broker = brokerProfileFromInput(input);
   const outputLocation = path.join(tmpdir(), `propshort-${videoId}.mp4`);
 
   try {
     await renderVideoWithFfmpeg({
       videoId,
       outputLocation,
-      clientName,
-      script: video.script || "",
+      broker,
       properties: propertiesFromInput(input),
     });
 

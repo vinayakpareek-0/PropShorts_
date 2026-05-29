@@ -929,6 +929,13 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
     .eq("run_id", run.id);
   if (error || !properties?.length) throw error ?? new Error("NO_PROPERTIES_FOR_VIDEO");
 
+  const { data: brokerProfile, error: brokerError } = await supabase
+    .from("profiles")
+    .select("full_name,company_name,phone,email,profile_photo_url,website_url,calendar_url")
+    .eq("user_id", run.user_id)
+    .maybeSingle();
+  if (brokerError) throw brokerError;
+
   const sortedProperties = [...properties].sort((a, b) => {
     const aOrder = typeof a.sort_order === "number" ? a.sort_order : 999;
     const bOrder = typeof b.sort_order === "number" ? b.sort_order : 999;
@@ -938,13 +945,12 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
   const fps = 24;
   const targetCount = resolvePropertyTargetCount(propertyTargetCount);
   const selectedProperties = sortedProperties.slice(0, targetCount);
-  const outroStartSeconds = 10 + selectedProperties.length * 8;
-  const durationSeconds = outroStartSeconds + 10;
+  const outroStartSeconds = 4 + selectedProperties.length * 8;
+  const durationSeconds = outroStartSeconds + 9;
   const scenes = [
-    { sceneId: "intro-a", type: "introGreeting", startFrame: 0, durationFrames: 4 * fps, onScreenText: `Hi ${clientName}.`, voiceover: "Hi, I have found you some great properties that match what you are looking for." },
-    { sceneId: "intro-b", type: "introContext", startFrame: 4 * fps, durationFrames: 6 * fps, onScreenText: "Check out these properties!", voiceover: "If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look." },
+    { sceneId: "intro", type: "introContext", startFrame: 0, durationFrames: 4 * fps, onScreenText: "Check out these properties!", voiceover: "I have found a few properties that match what you are looking for. Let us take a look." },
     ...selectedProperties.flatMap((property: Record<string, unknown>, index: number) => {
-      const sectionStart = (10 + index * 8) * fps;
+      const sectionStart = (4 + index * 8) * fps;
       const imageIds = Array.isArray(property.images)
         ? (property.images as Array<Record<string, unknown>>).slice(0, PROPERTY_IMAGES_PER_OPTION).map((image) => image.id ?? null)
         : [];
@@ -956,7 +962,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       ];
     }),
     { sceneId: "outro-pdf", type: "outroPdf", startFrame: outroStartSeconds * fps, durationFrames: 4 * fps, onScreenText: "Check out the PDF for the full property details!", voiceover: "I have also sent you a PDF with the full details of all the properties shown here." },
-    { sceneId: "outro-close", type: "outroClosing", startFrame: (outroStartSeconds + 4) * fps, durationFrames: 6 * fps, onScreenText: "Call me.", voiceover: "Let me know which one stands out to you, and I will take care of the next steps for you." },
+    { sceneId: "outro-close", type: "outroClosing", startFrame: (outroStartSeconds + 4) * fps, durationFrames: 5 * fps, onScreenText: "Call me.", voiceover: "Let me know which one stands out to you, and I will take care of the next steps for you." },
   ];
   const voiceoverScript = {
     intro: "Hi, I have found you some great properties that match what you are looking for. If you are interested in any of these, I will confirm availability right away and set up a viewing. Let us take a look.",
@@ -989,7 +995,7 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
       script: scenes.map((scene) => scene.voiceover).filter(Boolean).join("\n\n"),
       video_plan_json: plan,
       voiceover_script_json: voiceoverScript,
-      input_json: { clientName, properties: selectedProperties },
+      input_json: { clientName, properties: selectedProperties, brokerProfile },
       duration_seconds: durationSeconds,
       fps,
       format: "vertical",
