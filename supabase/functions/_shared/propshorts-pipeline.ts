@@ -1077,6 +1077,26 @@ function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
+function wrapPdfTextByWidth(value: unknown, font: PdfFont, size: number, maxWidth: number, maxLines = 4): string[] {
+  const words = pdfSafeText(value).replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+    if (lines.length === maxLines) break;
+  }
+
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
 function pdfSafeText(value: unknown) {
   return String(value || "")
     .replace(/₹/g, "INR ")
@@ -1794,21 +1814,37 @@ async function drawContactPage(context: PdfContext) {
   page.drawText("Schedule a Call", { x: 258, y: 335, size: 10, font: fonts.bold, color: PDF_GREEN });
   page.drawText("Thank you for trusting me with your property search.", { x: 42, y: 250, size: 12, font: fonts.regular, color: rgb(0.1, 0.1, 0.1) });
 
-  page.drawRectangle({ x: 410, y: 145, width: 150, height: 500, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
-  page.drawText("YOUR PROPERTY EXPERT", { x: 432, y: 608, size: 8, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawLine({ start: { x: 466, y: 596 }, end: { x: 494, y: 596 }, thickness: 1, color: PDF_GREEN });
-  drawImageFrame(page, brokerPhoto, 445, 515, 80, 62);
-  page.drawText(brokerName(broker).slice(0, 22), { x: 436, y: 484, size: 14, font: fonts.bold, color: rgb(0, 0, 0) });
-  page.drawText(brokerRole(broker).slice(0, 26), { x: 432, y: 466, size: 9, font: fonts.regular, color: rgb(0.15, 0.15, 0.15) });
+  const panelX = 410;
+  const panelWidth = 150;
+  const panelPadding = 18;
+  const panelInnerX = panelX + panelPadding;
+  const panelInnerWidth = panelWidth - panelPadding * 2;
+  const panelCenterX = panelX + panelWidth / 2;
+
+  page.drawRectangle({ x: panelX, y: 145, width: panelWidth, height: 500, color: rgb(1, 1, 1), borderColor: PDF_BORDER, borderWidth: 0.8 });
+  drawCenteredTextLines(page, ["YOUR PROPERTY", "EXPERT"], panelCenterX, 608, 7.5, fonts.bold, { leading: 9.5 });
+  page.drawLine({ start: { x: panelCenterX - 14, y: 586 }, end: { x: panelCenterX + 14, y: 586 }, thickness: 1, color: PDF_GREEN });
+  drawImageFrame(page, brokerPhoto, 445, 508, 80, 62);
+  drawTextLines(page, wrapPdfTextByWidth(brokerName(broker), fonts.bold, 13, panelInnerWidth, 2), panelInnerX, 482, 13, fonts.bold, { leading: 15 });
+  drawTextLines(page, wrapPdfTextByWidth(brokerRole(broker), fonts.regular, 8.5, panelInnerWidth, 2), panelInnerX, 456, 8.5, fonts.regular, { color: rgb(0.15, 0.15, 0.15), leading: 11 });
   [broker?.phone, broker?.email, broker?.website_url].filter(Boolean).forEach((item, index) => {
-    drawPdfIcon(page, ["phone", "mail", "web"][index], 428, 420 - index * 25, 11, PDF_GREEN);
-    page.drawText(pdfSafeText(item).slice(0, 24), { x: 446, y: 423 - index * 25, size: 8.2, font: fonts.regular, color: rgb(0.12, 0.12, 0.12) });
+    const y = 420 - index * 25;
+    drawPdfIcon(page, ["phone", "mail", "web"][index], panelInnerX, y, 10.5, PDF_GREEN);
+    drawTextLines(page, wrapPdfTextByWidth(item, fonts.regular, 7.4, panelInnerWidth - 18, 1), panelInnerX + 18, y + 3, 7.4, fonts.regular, { color: rgb(0.12, 0.12, 0.12) });
   });
   page.drawRectangle({ x: 425, y: 265, width: 120, height: 90, color: PDF_SOFT });
   drawBrand(page, logo, fonts, 456, 334, 78);
-  drawCenteredTextLines(page, ["Short videos.", "Smart matches.", "Better decisions."], 485, 306, 7.8, fonts.regular, { leading: 11 });
+  drawCenteredTextLines(page, ["Short videos.", "Smart matches.", "Better decisions."], panelCenterX, 306, 7, fonts.regular, { leading: 10 });
   page.drawRectangle({ x: 425, y: 170, width: 120, height: 70, color: PDF_SOFT });
-  drawTextLines(page, wrapPdfText("My goal is simple: help you find a home you will love today and for years to come.", 24, 4), 440, 220, 8.5, fonts.regular, { leading: 12 });
+  drawTextLines(
+    page,
+    wrapPdfTextByWidth("My goal is simple: help you find a home you will love today and for years to come.", fonts.regular, 7, 94, 5),
+    438,
+    222,
+    7,
+    fonts.regular,
+    { leading: 9.2 },
+  );
   drawFooter(page, logo, fonts, pageNumber);
 }
 
