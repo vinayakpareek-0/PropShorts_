@@ -1719,6 +1719,7 @@ function drawComparisonTablePage(context: PdfContext) {
     { label: "Features", x: tableX + 406, width: 118 },
   ];
   const headerY = 640;
+  const rowStartGap = 50;
   const rowHeight = 66;
   const cellPadding = 5;
 
@@ -1733,7 +1734,7 @@ function drawComparisonTablePage(context: PdfContext) {
   });
 
   properties.slice(0, 5).forEach((property, index) => {
-    const y = headerY - 38 - index * rowHeight;
+    const y = headerY - rowStartGap - index * rowHeight;
     const rowColor = index % 2 === 0 ? rgb(0.9, 0.91, 0.91) : rgb(1, 1, 1);
     page.drawRectangle({ x: tableX, y: y - 12, width: tableWidth, height: rowHeight - 12, color: rowColor });
 
