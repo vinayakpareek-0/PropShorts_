@@ -17,6 +17,22 @@ const fps = 24;
 const activeRenders = new Set();
 let cachedLogoDataUri = null;
 
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
@@ -361,10 +377,10 @@ async function imageDataUri(url) {
     if (!response.ok) return null;
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    const jpeg = await sharp(buffer)
+    const jpeg = await sharp(buffer, { limitInputPixels: 24000000 })
       .rotate()
-      .resize(760, 760, { fit: "cover", position: "attention", withoutEnlargement: true })
-      .jpeg({ quality: 72, mozjpeg: true })
+      .resize(720, 570, { fit: "cover", position: "attention", withoutEnlargement: true })
+      .jpeg({ quality: 68, mozjpeg: true })
       .toBuffer();
 
     return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
@@ -383,11 +399,8 @@ async function preloadPropertyImages(properties) {
         .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url)),
     ),
   ];
-  const imageMap = new Map();
-
-  for (const url of urls) {
-    imageMap.set(url, await imageDataUri(url));
-  }
+  const imageEntries = await mapWithConcurrency(urls, 5, async (url) => [url, await imageDataUri(url)]);
+  const imageMap = new Map(imageEntries);
 
   return imageMap;
 }
@@ -413,9 +426,11 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, broker, properti
     });
   }
 
-  const logoDataUri = await getLogoDataUri();
-  const brokerPhotoDataUri = broker.photoUrl ? await imageDataUri(broker.photoUrl) : "";
-  const imageMap = await preloadPropertyImages(propertyLines);
+  const [logoDataUri, brokerPhotoDataUri, imageMap] = await Promise.all([
+    getLogoDataUri(),
+    broker.photoUrl ? imageDataUri(broker.photoUrl) : "",
+    preloadPropertyImages(propertyLines),
+  ]);
   const slides = [
     { duration: 4, svg: introContextSlide(logoDataUri, broker, brokerPhotoDataUri) },
   ];
@@ -432,10 +447,7 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, broker, properti
   slides.push({ duration: 4, svg: outroSlide(logoDataUri) });
   slides.push({ duration: 5, svg: closingSlide(logoDataUri, broker, brokerPhotoDataUri) });
 
-  const slideFiles = [];
-  for (const [index, slide] of slides.entries()) {
-    slideFiles.push(await writeSlide(videoId, index, slide.svg));
-  }
+  const slideFiles = await mapWithConcurrency(slides, 4, (slide, index) => writeSlide(videoId, index, slide.svg));
   const concatPath = path.join(tmpdir(), `propshort-${videoId}-concat.txt`);
   const concatBody = slideFiles
     .map((file, index) => `file '${concatFilePath(file)}'\nduration ${slides[index].duration}`)
