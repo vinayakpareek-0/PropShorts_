@@ -2,7 +2,7 @@ services:
   - type: web
     name: propshorts-render-worker
     runtime: node
-    plan: free
+    plan: standard
     region: oregon
     branch: main
     buildCommand: npm ci
