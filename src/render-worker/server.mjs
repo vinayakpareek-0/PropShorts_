@@ -100,7 +100,7 @@ function fit(value, max = 78) {
   return text.length > max ? `${text.slice(0, max - 1).trim()}...` : text;
 }
 
-function fitBadgeText(value, max = 18) {
+function fitBadgeText(value, max = 16) {
   return fit(String(value || ""), max).toUpperCase();
 }
 
@@ -273,13 +273,17 @@ function agentBlock({ x = 64, y = 62, compact = false, broker, brokerPhotoDataUr
   const avatarSize = compact ? 126 : 112;
   const nameSize = compact ? 34 : 31;
   const detailSize = compact ? 31 : 28;
+  const phoneSize = compact ? 27 : 24;
   const lineGap = compact ? 34 : 31;
   const textX = x + avatarSize + 30;
+  const blockWidth = compact ? 600 : 500;
+  const blockHeight = compact ? 148 : 128;
   return `
+    <rect x="${x - 18}" y="${y - 18}" width="${blockWidth}" height="${blockHeight}" rx="10" fill="#f3f3f1"/>
     ${brokerAvatar({ x, y, size: avatarSize, photoDataUri: brokerPhotoDataUri })}
     <text x="${textX}" y="${y + 36}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${nameSize}" font-weight="800">${escapeXml(fit(brokerLine(broker), compact ? 19 : 24))}</text>
     <text x="${textX}" y="${y + 36 + lineGap}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="700">${escapeXml(fit(broker.companyName, compact ? 21 : 28))}</text>
-    <text x="${textX}" y="${y + 36 + lineGap * 2}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${detailSize}" font-weight="600">${escapeXml(fit(broker.phone, compact ? 18 : 24))}</text>
+    <text x="${textX}" y="${y + 36 + lineGap * 2}" fill="#080808" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="${phoneSize}" font-weight="600">${escapeXml(fit(broker.phone, compact ? 18 : 24))}</text>
   `;
 }
 
@@ -322,8 +326,8 @@ function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataU
   const badge = fitBadgeText(metricLabel(property, imageIndex));
   const location = property.area || property.city || locationLabel(property);
   const headlineLines = wrapText(property.headline || property.description || "A strong match for the brief.", 21, 3);
-  const badgeWidth = Math.max(132, Math.min(300, badge.length * 13 + 38));
-  const badgeSize = badge.length > 16 ? 24 : badge.length > 12 ? 27 : 31;
+  const badgeWidth = Math.max(150, Math.min(340, badge.length * 14 + 52));
+  const badgeSize = badge.length > 14 ? 23 : badge.length > 11 ? 26 : 31;
   return baseSvg(`
     ${agentBlock({ x: 58, y: 88, compact: true, broker, brokerPhotoDataUri })}
     ${imagePanel(imageDataUri)}
@@ -339,9 +343,9 @@ function propertyImageSlide(property, index, imageIndex, imageDataUri, logoDataU
 
 function outroSlide(logoDataUri) {
   return baseSvg(`
-    <rect x="96" y="410" width="528" height="112" rx="12" fill="#080808"/>
-    <text x="360" y="494" text-anchor="middle" fill="#ffffff" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="104" font-weight="500">PDF</text>
-    ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 360, y: 645, size: 41, weight: 600, lineHeight: 1.02, anchor: "middle" })}
+    <rect x="110" y="430" width="500" height="138" rx="13" fill="#080808"/>
+    <text x="360" y="529" text-anchor="middle" fill="#ffffff" font-family="Poppins, Arial, Helvetica, sans-serif" font-size="92" font-weight="500">PDF</text>
+    ${textBlock(["Check out the PDF", "for the full property", "details!"], { x: 360, y: 660, size: 38, weight: 600, lineHeight: 1.08, anchor: "middle" })}
     ${footerMark(logoDataUri)}
   `);
 }
