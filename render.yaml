@@ -20,3 +20,5 @@ services:
         value: generated-videos
       - key: RENDER_WORKER_SECRET
         sync: false
+      - key: CARTESIA_API_KEY
+        sync: false

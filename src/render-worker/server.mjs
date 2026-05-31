@@ -13,6 +13,8 @@ const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 180000);
 const imageFetchTimeoutMs = Number(process.env.REMOTION_IMAGE_FETCH_TIMEOUT_MS || 4500);
 const maxVideoImagesPerProperty = Number(process.env.REMOTION_IMAGES_PER_PROPERTY || 3);
+const cartesiaApiKey = process.env.CARTESIA_API_KEY || "";
+const cartesiaVoiceId = process.env.CARTESIA_VOICE_ID || "694f9389-aac1-45b6-b726-9d9369183238";
 const fps = 24;
 const activeRenders = new Set();
 let cachedLogoDataUri = null;
@@ -148,6 +150,63 @@ function brokerProfileFromInput(input) {
 
 function brokerLine(profile) {
   return `${profile.fullName} @`;
+}
+
+function narrationForVideo({ broker, properties }) {
+  const propertyLines = properties.slice(0, 5).map((property, index) => {
+    const ordinal = ["First", "Second", "Third", "Fourth", "Fifth"][index] || `Property ${index + 1}`;
+    const location = locationLabel(property);
+    const detail = property.headline || property.description || "This is a strong match for the brief.";
+    const price = property.price_label ? ` The price is ${property.price_label}.` : "";
+    return `${ordinal}, ${property.title || `property ${index + 1}`} in ${location}. ${detail}.${price}`;
+  });
+
+  return [
+    `Here are a few properties I found for you. This is ${broker.fullName}.`,
+    ...propertyLines,
+    "I have also included the full PDF with more details.",
+    "Call me when you are ready, and I will help with the next step.",
+  ].join(" ");
+}
+
+async function generateNarrationAudio(videoId, transcript) {
+  if (!cartesiaApiKey || !transcript.trim()) return null;
+
+  const audioPath = path.join(tmpdir(), `propshort-${videoId}-voiceover.wav`);
+  try {
+    const response = await fetch("https://api.cartesia.ai/tts/bytes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cartesiaApiKey}`,
+        "Cartesia-Version": "2025-04-16",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model_id: "sonic-2",
+        transcript: transcript.slice(0, 3500),
+        voice: { mode: "id", id: cartesiaVoiceId },
+        output_format: {
+          container: "wav",
+          encoding: "pcm_f32le",
+          sample_rate: 44100,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Cartesia TTS failed with ${response.status}: ${errorText.slice(0, 300)}`);
+    }
+
+    const audioBytes = Buffer.from(await response.arrayBuffer());
+    if (audioBytes.length < 128) throw new Error("Cartesia TTS returned an empty audio file");
+    await writeFile(audioPath, audioBytes);
+    return audioPath;
+  } catch (error) {
+    console.warn(`Cartesia narration skipped: ${error instanceof Error ? error.message : String(error)}`);
+    await rm(audioPath, { force: true });
+    return null;
+  }
 }
 
 function runFfmpeg(args, videoId) {
@@ -451,6 +510,8 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, broker, properti
   slides.push({ duration: 4, svg: outroSlide(logoDataUri) });
   slides.push({ duration: 5, svg: closingSlide(logoDataUri, broker, brokerPhotoDataUri) });
 
+  const totalDuration = slides.reduce((sum, slide) => sum + slide.duration, 0);
+  const narrationPath = await generateNarrationAudio(videoId, narrationForVideo({ broker, properties: propertyLines }));
   const slideFiles = await mapWithConcurrency(slides, 4, (slide, index) => writeSlide(videoId, index, slide.svg));
   const concatPath = path.join(tmpdir(), `propshort-${videoId}-concat.txt`);
   const concatBody = slideFiles
@@ -468,22 +529,36 @@ async function renderVideoWithFfmpeg({ videoId, outputLocation, broker, properti
       "0",
       "-i",
       concatPath,
+    ];
+    if (narrationPath) {
+      args.push("-i", narrationPath);
+    }
+    args.push(
       "-vf",
       "format=yuv420p,scale=720:1280",
+      "-map",
+      "0:v:0",
+    );
+    if (narrationPath) {
+      args.push("-map", "1:a:0", "-af", "apad", "-c:a", "aac", "-b:a", "128k");
+    }
+    args.push(
       "-c:v",
       "libx264",
       "-pix_fmt",
       "yuv420p",
       "-r",
       String(fps),
+      "-t",
+      String(totalDuration),
       "-movflags",
       "+faststart",
       outputLocation,
-    ];
+    );
     console.log(`Starting FFmpeg render for video ${videoId}`);
     await runFfmpeg(args, videoId);
   } finally {
-    await Promise.all([...slideFiles, concatPath].map((file) => rm(file, { force: true })));
+    await Promise.all([...slideFiles, concatPath, narrationPath].filter(Boolean).map((file) => rm(file, { force: true })));
   }
 }
 
