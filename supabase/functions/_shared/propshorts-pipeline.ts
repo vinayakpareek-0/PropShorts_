@@ -683,6 +683,11 @@ function sortImageQualifiedProperties(properties: PropertyCandidate[]) {
     .sort((a, b) => propertyImageCount(b) - propertyImageCount(a));
 }
 
+function minimumQualifiedPropertyCount(targetCount: number) {
+  if (targetCount === 3) return 2;
+  return targetCount;
+}
+
 async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, inferred: ReturnType<typeof inferRequirement>, targetCount: number, attempt: number) {
   const breadthInstruction = attempt === 1
     ? "Search broadly first. Inspect a large candidate pool before choosing."
@@ -801,8 +806,14 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     sort_order: index + 1,
   }));
 
-  if (imageQualifiedProperties.length < targetCount) {
+  const minimumQualifiedCount = minimumQualifiedPropertyCount(targetCount);
+
+  if (imageQualifiedProperties.length < minimumQualifiedCount) {
     throw new Error(`IMAGE_QUALIFIED_SEARCH_FAILED: Found ${imageQualifiedProperties.length}/${targetCount} listings with real images after ${SEARCH_RETRY_ATTEMPTS} search attempts.`);
+  }
+
+  if (imageQualifiedProperties.length < targetCount) {
+    warnings.push(`Search completed with ${imageQualifiedProperties.length}/${targetCount} image-qualified listings. Review before sharing.`);
   }
 
   return {
@@ -810,6 +821,7 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
       interpreted_brief: inferred.note,
       ...(latestSummary ?? {}),
       search_attempts: SEARCH_RETRY_ATTEMPTS,
+      requested_property_count: targetCount,
       image_qualified_count: imageQualifiedProperties.length,
       warnings,
     },
