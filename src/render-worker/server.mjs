@@ -18,6 +18,7 @@ const bucket = process.env.SUPABASE_VIDEO_BUCKET || "generated-videos";
 const renderTimeoutMs = Number(process.env.REMOTION_RENDER_TIMEOUT_MS || 300000);
 const cartesiaApiKey = process.env.CARTESIA_API_KEY || "";
 const cartesiaVoiceId = process.env.CARTESIA_VOICE_ID || "694f9389-aac1-45b6-b726-9d9369183238";
+const workerVersion = "railway-remotion-v2";
 
 let bundledServeUrl;
 const renderQueue = [];
@@ -266,6 +267,8 @@ async function renderVideo(videoId, accessToken) {
     properties,
   };
 
+  console.log(`[${workerVersion}] render request video=${videoId} properties=${properties.length}`);
+
   const composition = await selectComposition({
     serveUrl,
     id: "PropertyShort",
@@ -287,12 +290,20 @@ async function renderVideo(videoId, accessToken) {
       codec: "h264",
       outputLocation: silentOutputLocation,
       concurrency: 1,
-      crf: 24,
+      offthreadVideoThreads: 1,
+      crf: 28,
+      x264Preset: "ultrafast",
+      videoBitrate: "1800k",
+      encodingMaxRate: "2200k",
+      encodingBufferSize: "4400k",
       disallowParallelEncoding: true,
       imageFormat: "jpeg",
-      jpegQuality: 82,
+      jpegQuality: 70,
       muted: true,
       timeoutInMilliseconds: 20000,
+      ffmpegOverride: ({ type, args }) => {
+        return ["-threads", "1", ...args];
+      },
       cancelSignal,
       inputProps,
       onProgress: ({ progress, renderedFrames, encodedFrames }) => {
@@ -390,7 +401,7 @@ async function drainRenderQueue() {
 const server = createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
-      json(res, 200, { ok: true, service: "propshorts-render-worker" });
+      json(res, 200, { ok: true, service: "propshorts-render-worker", version: workerVersion });
       return;
     }
 
@@ -429,5 +440,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, () => {
-  console.log(`PropShorts render worker listening on ${port}`);
+  console.log(`PropShorts render worker listening on ${port} (${workerVersion})`);
 });
