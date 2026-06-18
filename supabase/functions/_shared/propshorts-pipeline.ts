@@ -1396,7 +1396,10 @@ async function createCartesiaNarrationUrl(supabase: SupabaseClient, videoId: str
       model_id: "sonic-3.5",
       transcript,
       voice: { mode: "id", id: voiceId },
-      output_format: { container: "mp3" },
+      output_format: {
+        container: "mp3",
+        sample_rate: 44100,
+      },
       generation_config: {
         speed: 1.04,
         volume: 1,
