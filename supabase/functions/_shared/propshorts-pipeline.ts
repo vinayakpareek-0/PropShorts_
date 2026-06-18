@@ -1235,7 +1235,7 @@ function shotstackPropertyImages(property: Record<string, unknown>): string[] {
     .slice(0, PROPERTY_IMAGES_PER_OPTION);
 }
 
-function buildShotstackEdit(input: Record<string, unknown>) {
+function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: string | null) {
   const logoUrl = "https://propshorts.netlify.app/top_logo.png";
   const fallbackImage = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80";
   const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
@@ -1330,6 +1330,21 @@ function buildShotstackEdit(input: Record<string, unknown>) {
     .sort((a, b) => b - a)
     .map((lane) => ({ clips: clipsByLane[lane] }));
 
+  if (narrationUrl) {
+    tracks.unshift({
+      clips: [{
+        asset: {
+          type: "audio",
+          src: narrationUrl,
+          volume: 1,
+          effect: "fadeInFadeOut",
+        },
+        start: 0,
+        length: start + 5,
+      }],
+    });
+  }
+
   return {
     timeline: { background: "#ffffff", tracks, cache: true },
     output: {
@@ -1342,6 +1357,73 @@ function buildShotstackEdit(input: Record<string, unknown>) {
       destinations: [{ provider: "shotstack", exclude: false }],
     },
   };
+}
+
+function shotstackNarrationScript(input: Record<string, unknown>): string {
+  const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
+  const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "your broker", 28);
+  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 5) as Array<Record<string, unknown>> : [];
+  const propertyLines = properties.map((property, index) => {
+    const label = index === 0 ? "First" : index === 1 ? "Second" : index === 2 ? "Third" : `Option ${index + 1}`;
+    const title = shotstackFitText(property.title ?? property.area ?? property.city ?? `property ${index + 1}`, 42);
+    const location = shotstackFitText([property.area, property.city].filter(Boolean).join(", ") || property.area || property.city || "", 36);
+    const headline = shotstackFitText(property.headline ?? property.description ?? "a strong match for your brief", 70);
+    const where = location ? ` in ${location}` : "";
+    return `${label}, ${title}${where}. ${headline}.`;
+  });
+
+  return [
+    `Hi, this is ${brokerName}. I found a few properties that match your requirement.`,
+    ...propertyLines,
+    "I have added the full PDF with more details. Call me when you are ready, and I will help with the next step.",
+  ].join(" ");
+}
+
+async function createCartesiaNarrationUrl(supabase: SupabaseClient, videoId: string, userId: string, input: Record<string, unknown>): Promise<string | null> {
+  const apiKey = Deno.env.get("CARTESIA_API_KEY");
+  if (!apiKey) return null;
+
+  const voiceId = Deno.env.get("CARTESIA_VOICE_ID") ?? "694f9389-aac1-45b6-b726-9d9369183238";
+  const transcript = shotstackNarrationScript(input).slice(0, 1800);
+  const response = await fetch("https://api.cartesia.ai/tts/bytes", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Cartesia-Version": "2026-03-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model_id: "sonic-3.5",
+      transcript,
+      voice: { mode: "id", id: voiceId },
+      output_format: { container: "mp3" },
+      generation_config: {
+        speed: 1.04,
+        volume: 1,
+      },
+      language: "en",
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`CARTESIA_TTS_FAILED:${response.status}:${body.slice(0, 400)}`);
+  }
+
+  const audioBytes = new Uint8Array(await response.arrayBuffer());
+  if (audioBytes.length < 128) throw new Error("CARTESIA_TTS_EMPTY_AUDIO");
+
+  const objectPath = `${userId}/${videoId}-voiceover.mp3`;
+  const { error: uploadError } = await supabase.storage
+    .from("generated-videos")
+    .upload(objectPath, audioBytes, {
+      contentType: "audio/mpeg",
+      upsert: true,
+    });
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from("generated-videos").getPublicUrl(objectPath);
+  return data.publicUrl;
 }
 
 async function shotstackApiRequest(apiUrl: string, apiKey: string, path: string, init: RequestInit = {}) {
@@ -1366,13 +1448,14 @@ async function renderVideoWithShotstack(supabase: SupabaseClient, videoId: strin
   const apiUrl = Deno.env.get("SHOTSTACK_API_URL") ?? "https://api.shotstack.io/edit/stage";
   const { data: video, error } = await supabase
     .from("generated_videos")
-    .select("id,input_json")
+    .select("id,user_id,input_json")
     .eq("id", videoId)
     .single();
   if (error || !video) throw error ?? new Error("VIDEO_ROW_NOT_FOUND");
 
   const input = video.input_json && typeof video.input_json === "object" ? video.input_json as Record<string, unknown> : {};
-  const edit = buildShotstackEdit(input);
+  const narrationUrl = await createCartesiaNarrationUrl(supabase, video.id, video.user_id, input);
+  const edit = buildShotstackEdit(input, narrationUrl);
   const queued = await shotstackApiRequest(apiUrl, apiKey, "/render", {
     method: "POST",
     body: JSON.stringify(edit),
