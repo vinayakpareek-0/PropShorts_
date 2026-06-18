@@ -1024,6 +1024,27 @@ export async function generateVideoRecord(supabase: SupabaseClient, run: RunRow,
 }
 
 export async function enqueueVideoRender(supabase: SupabaseClient, videoId: string) {
+  const shotstackApiKey = Deno.env.get("SHOTSTACK_API_KEY");
+  if (shotstackApiKey) {
+    const shotstackRequest = renderVideoWithShotstack(supabase, videoId, shotstackApiKey).catch(async (error) => {
+      await supabase
+        .from("generated_videos")
+        .update({
+          status: "failed",
+          error_message: getErrorMessage(error),
+        })
+        .eq("id", videoId);
+    });
+
+    const edgeRuntime = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(shotstackRequest);
+    } else {
+      await shotstackRequest;
+    }
+    return;
+  }
+
   const renderUrl = Deno.env.get("REMOTION_RENDER_WEBHOOK_URL");
   const renderSecret = Deno.env.get("REMOTION_RENDER_SECRET");
   const authorization = (supabase as AuthorizedSupabaseClient).__authorization;
@@ -1074,6 +1095,320 @@ export async function enqueueVideoRender(supabase: SupabaseClient, videoId: stri
   } else {
     await renderRequest;
   }
+}
+
+function shotstackFitText(value: unknown, max = 72): string {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max - 1).trim()}...` : text;
+}
+
+function shotstackWrapText(value: unknown, maxChars = 20, maxLines = 3): string {
+  const words = String(value ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+    if (lines.length === maxLines) break;
+  }
+
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length === maxLines) lines[maxLines - 1] = shotstackFitText(lines[maxLines - 1], maxChars);
+  return lines.join("\n");
+}
+
+function shotstackOffset(x: number, y: number) {
+  return {
+    x: (x - 360) / 720,
+    y: (640 - y) / 1280,
+  };
+}
+
+function shotstackText(value: string, start: number, length: number, x: number, y: number, width: number, height: number, size: number, weight = 600, align: "left" | "center" = "left") {
+  return {
+    asset: {
+      type: "text",
+      text: value,
+      width,
+      height,
+      font: {
+        family: "Poppins",
+        color: "#080808",
+        size,
+        weight,
+        lineHeight: 1.05,
+      },
+      alignment: { horizontal: align, vertical: "center" },
+      ellipsis: "...",
+    },
+    start,
+    length,
+    width,
+    height,
+    position: "center",
+    offset: shotstackOffset(x, y),
+  };
+}
+
+function shotstackWhiteText(value: string, start: number, length: number, x: number, y: number, width: number, height: number, size: number, weight = 700) {
+  const clip = shotstackText(value, start, length, x, y, width, height, size, weight, "center");
+  clip.asset.font.color = "#ffffff";
+  return clip;
+}
+
+function shotstackImage(src: string, start: number, length: number, x: number, y: number, width: number, height: number, fit: "crop" | "contain" = "crop") {
+  return {
+    asset: { type: "image", src },
+    start,
+    length,
+    width,
+    height,
+    fit,
+    position: "center",
+    offset: shotstackOffset(x, y),
+  };
+}
+
+function shotstackShape(start: number, length: number, x: number, y: number, width: number, height: number, color = "#ffffff", radius = 0) {
+  return {
+    asset: {
+      type: "shape",
+      shape: "rectangle",
+      width,
+      height,
+      fill: { color, opacity: 1 },
+      stroke: { color, width: 0 },
+      rectangle: { width, height, cornerRadius: radius },
+    },
+    start,
+    length,
+    width,
+    height,
+    position: "center",
+    offset: shotstackOffset(x, y),
+  };
+}
+
+function shotstackCircle(start: number, length: number, x: number, y: number, radius: number) {
+  const size = radius * 2;
+  return {
+    asset: {
+      type: "shape",
+      shape: "circle",
+      width: size,
+      height: size,
+      fill: { color: "#080808", opacity: 1 },
+      stroke: { color: "#080808", width: 0 },
+      circle: { radius },
+    },
+    start,
+    length,
+    width: size,
+    height: size,
+    position: "center",
+    offset: shotstackOffset(x, y),
+  };
+}
+
+function shotstackOrdinal(index: number): string {
+  return ["One", "Two", "Three", "Four", "Five"][index] ?? String(index + 1);
+}
+
+function shotstackPropertyImages(property: Record<string, unknown>): string[] {
+  if (!Array.isArray(property.images)) return [];
+  return property.images
+    .map((image) => {
+      if (typeof image === "string") return image;
+      if (image && typeof image === "object" && typeof (image as Record<string, unknown>).url === "string") {
+        return (image as Record<string, string>).url;
+      }
+      return "";
+    })
+    .filter((url) => /^https?:\/\//i.test(url))
+    .slice(0, PROPERTY_IMAGES_PER_OPTION);
+}
+
+function buildShotstackEdit(input: Record<string, unknown>) {
+  const logoUrl = "https://propshorts.netlify.app/top_logo.png";
+  const fallbackImage = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80";
+  const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
+  const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "Your Property Expert", 30);
+  const brokerCompany = shotstackFitText(brokerProfile.company_name ?? brokerProfile.companyName ?? "PropShorts Real Estate", 30);
+  const brokerPhone = shotstackFitText(brokerProfile.phone ?? "Contact via broker", 24);
+  const brokerPhoto = typeof brokerProfile.profile_photo_url === "string" && /^https?:\/\//i.test(brokerProfile.profile_photo_url)
+    ? brokerProfile.profile_photo_url
+    : typeof brokerProfile.photoUrl === "string" && /^https?:\/\//i.test(brokerProfile.photoUrl)
+      ? brokerProfile.photoUrl
+      : logoUrl;
+  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 5) as Array<Record<string, unknown>> : [];
+  const clipsByLane: Record<number, Array<Record<string, unknown>>> = {};
+
+  function add(lane: number, ...clips: Array<Record<string, unknown>>) {
+    clipsByLane[lane] = clipsByLane[lane] ?? [];
+    clipsByLane[lane].push(...clips);
+  }
+
+  function addFooter(start: number, length: number) {
+    add(13, shotstackText("PS 903", start, length, 98, 1212, 120, 42, 22, 700));
+    add(14, shotstackImage(logoUrl, start, length, 596, 1210, 124, 56, "contain"));
+  }
+
+  function addBroker(start: number, length: number, y = 138) {
+    add(2, shotstackShape(start, length, 360, y, 606, 154, "#f3f3f1", 12));
+    add(4, shotstackImage(brokerPhoto, start, length, 128, y, 112, 112, "crop"));
+    add(5, shotstackText(`${brokerName} @`, start, length, 338, y - 42, 300, 42, 32, 700));
+    add(6, shotstackText(brokerCompany, start, length, 338, y - 3, 300, 42, 31, 700));
+    add(7, shotstackText(brokerPhone, start, length, 338, y + 39, 300, 34, 24, 600));
+  }
+
+  let start = 0;
+  addFooter(start, 4);
+  add(10, shotstackText("Check Out\nThese\nProperties", start, 4, 252, 545, 360, 360, 68, 700));
+  add(4, shotstackImage(brokerPhoto, start, 4, 154, 930, 108, 108, "crop"));
+  add(5, shotstackText(`${brokerName} @`, start, 4, 400, 890, 320, 42, 31, 700));
+  add(6, shotstackText(brokerCompany, start, 4, 400, 944, 320, 42, 30, 700));
+  add(7, shotstackText(brokerPhone, start, 4, 400, 1000, 320, 34, 25, 600));
+  start += 4;
+
+  properties.forEach((property, index) => {
+    addFooter(start, 1);
+    add(1, shotstackCircle(start, 1, 360, 590, 150));
+    add(9, shotstackWhiteText(String(index + 1), start, 1, 360, 590, 200, 180, 160, 800));
+    start += 1;
+
+    const images = shotstackPropertyImages(property);
+    const imageSet = images.length ? images : [fallbackImage];
+    for (let imageIndex = 0; imageIndex < Math.min(3, imageSet.length); imageIndex += 1) {
+      const length = 2.35;
+      const price = shotstackFitText(property.price_label ?? "Price on request", 20).toUpperCase();
+      const metrics = [
+        typeof property.bedrooms === "number" ? `${property.bedrooms} BED` : null,
+        typeof property.sqft === "number" ? `${Math.round(property.sqft)} SQFT` : shotstackFitText(property.size_label, 20).toUpperCase(),
+        price,
+      ].filter(Boolean) as string[];
+      const badge = shotstackFitText(metrics[imageIndex] ?? metrics[0] ?? "DETAILS IN PDF", 20).toUpperCase();
+      const badgeWidth = Math.max(156, Math.min(340, badge.length * 15 + 54));
+      const badgeSize = badge.length > 15 ? 23 : badge.length > 11 ? 26 : 31;
+      const location = shotstackFitText([property.area, property.city].filter(Boolean).join(", ") || property.area || property.city || "Location on request", 30);
+      const headline = shotstackWrapText(property.headline ?? property.description ?? "A strong match for the brief.", 19, 3);
+
+      addFooter(start, length);
+      addBroker(start, length);
+      add(0, shotstackImage(imageSet[imageIndex] ?? imageSet[0], start, length, 360, 548, 720, 570, "crop"));
+      add(3, shotstackShape(start, length, 64 + badgeWidth / 2, 782, badgeWidth, 64, "#ffffff", 0));
+      add(8, shotstackText(badge, start, length, 64 + badgeWidth / 2, 782, badgeWidth - 20, 48, badgeSize, 700, "center"));
+      add(9, shotstackText(`Property ${shotstackOrdinal(index)}`, start, length, 180, 912, 232, 42, 28, 500));
+      add(10, shotstackText(location, start, length, 310, 956, 492, 86, 34, 600));
+      add(11, shotstackShape(start, length, 310, 1022, 492, 2, "#111111", 0));
+      add(12, shotstackText(headline, start, length, 340, 1108, 552, 170, 38, 400));
+      start += length;
+    }
+  });
+
+  addFooter(start, 4);
+  add(1, shotstackShape(start, 4, 360, 500, 500, 138, "#080808", 14));
+  add(10, shotstackWhiteText("PDF", start, 4, 360, 500, 440, 116, 84, 500));
+  add(10, shotstackText("Check out the PDF\nfor the full property\ndetails!", start, 4, 360, 695, 520, 190, 34, 400, "center"));
+  start += 4;
+
+  addFooter(start, 5);
+  add(10, shotstackText("Call\nme.", start, 5, 360, 310, 460, 250, 140, 800, "center"));
+  add(4, shotstackImage(brokerPhoto, start, 5, 360, 785, 148, 148, "crop"));
+  add(12, shotstackText(`${brokerName} @\n${brokerCompany}\n${brokerPhone}`, start, 5, 360, 980, 560, 180, 38, 600, "center"));
+
+  const tracks = Object.keys(clipsByLane)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .map((lane) => ({ clips: clipsByLane[lane] }));
+
+  return {
+    timeline: { background: "#ffffff", tracks, cache: true },
+    output: {
+      format: "mp4",
+      resolution: "hd",
+      aspectRatio: "9:16",
+      size: { width: 720, height: 1280 },
+      fps: 24,
+      quality: "medium",
+      destinations: [{ provider: "shotstack", exclude: false }],
+    },
+  };
+}
+
+async function shotstackApiRequest(apiUrl: string, apiKey: string, path: string, init: RequestInit = {}) {
+  const response = await fetch(`${apiUrl}${path}`, {
+    ...init,
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!response.ok || body.success === false) {
+    throw new Error(`SHOTSTACK_FAILED:${response.status}:${JSON.stringify(body).slice(0, 700)}`);
+  }
+  return body;
+}
+
+async function renderVideoWithShotstack(supabase: SupabaseClient, videoId: string, apiKey: string) {
+  const apiUrl = Deno.env.get("SHOTSTACK_API_URL") ?? "https://api.shotstack.io/edit/stage";
+  const { data: video, error } = await supabase
+    .from("generated_videos")
+    .select("id,input_json")
+    .eq("id", videoId)
+    .single();
+  if (error || !video) throw error ?? new Error("VIDEO_ROW_NOT_FOUND");
+
+  const input = video.input_json && typeof video.input_json === "object" ? video.input_json as Record<string, unknown> : {};
+  const edit = buildShotstackEdit(input);
+  const queued = await shotstackApiRequest(apiUrl, apiKey, "/render", {
+    method: "POST",
+    body: JSON.stringify(edit),
+  });
+  const providerJobId = queued?.response?.id;
+  if (!providerJobId || typeof providerJobId !== "string") throw new Error("SHOTSTACK_RENDER_ID_MISSING");
+
+  await supabase
+    .from("generated_videos")
+    .update({
+      provider: "shotstack",
+      provider_job_id: providerJobId,
+      error_message: null,
+      status: "processing",
+    })
+    .eq("id", videoId);
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, attempt < 8 ? 5000 : 10000));
+    const statusBody = await shotstackApiRequest(apiUrl, apiKey, `/render/${providerJobId}?data=false`, { method: "GET" });
+    const status = statusBody?.response?.status;
+    const url = statusBody?.response?.url;
+    if (status === "done" && typeof url === "string" && url) {
+      await supabase
+        .from("generated_videos")
+        .update({
+          status: "completed",
+          video_url: url,
+          completed_at: new Date().toISOString(),
+          error_message: null,
+        })
+        .eq("id", videoId);
+      return;
+    }
+    if (status === "failed") throw new Error(`SHOTSTACK_RENDER_FAILED:${JSON.stringify(statusBody).slice(0, 700)}`);
+  }
+
+  throw new Error(`SHOTSTACK_RENDER_TIMEOUT:${providerJobId}`);
 }
 
 function wrapPdfText(value: unknown, maxChars = 62, maxLines = 4): string[] {
