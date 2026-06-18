@@ -1217,6 +1217,31 @@ function shotstackCircle(start: number, length: number, x: number, y: number, ra
   };
 }
 
+function shotstackAvatarText(value: string, start: number, length: number, x: number, y: number, size: number) {
+  return {
+    asset: {
+      type: "text",
+      text: value,
+      width: size,
+      height: size,
+      font: {
+        family: "Poppins",
+        color: "#ffffff",
+        size: Math.round(size * 0.34),
+        weight: 800,
+        lineHeight: 1,
+      },
+      alignment: { horizontal: "center", vertical: "center" },
+    },
+    start,
+    length,
+    width: size,
+    height: size,
+    position: "center",
+    offset: shotstackOffset(x, y),
+  };
+}
+
 function shotstackOrdinal(index: number): string {
   return ["One", "Two", "Three", "Four", "Five"][index] ?? String(index + 1);
 }
@@ -1239,14 +1264,14 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
   const logoUrl = "https://propshorts.netlify.app/top_logo.png";
   const fallbackImage = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80";
   const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
-  const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "Your Property Expert", 30);
-  const brokerCompany = shotstackFitText(brokerProfile.company_name ?? brokerProfile.companyName ?? "PropShorts Real Estate", 30);
-  const brokerPhone = shotstackFitText(brokerProfile.phone ?? "Contact via broker", 24);
+  const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "Your Property Expert", 26);
+  const brokerCompany = shotstackFitText(brokerProfile.company_name ?? brokerProfile.companyName ?? "", 26);
+  const brokerPhone = shotstackFitText(brokerProfile.phone ?? "", 22);
   const brokerPhoto = typeof brokerProfile.profile_photo_url === "string" && /^https?:\/\//i.test(brokerProfile.profile_photo_url)
     ? brokerProfile.profile_photo_url
     : typeof brokerProfile.photoUrl === "string" && /^https?:\/\//i.test(brokerProfile.photoUrl)
       ? brokerProfile.photoUrl
-      : logoUrl;
+      : null;
   const properties = Array.isArray(input.properties) ? input.properties.slice(0, 3) as Array<Record<string, unknown>> : [];
   const propertyCount = Math.max(1, properties.length);
   const propertyImageSlideLength = Math.max(2.2, Math.min(3.5, (23 / propertyCount - 1) / 3));
@@ -1262,22 +1287,33 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
     add(14, shotstackImage(logoUrl, start, length, 596, 1210, 124, 56, "contain"));
   }
 
+  function addBrokerAvatar(start: number, length: number, x: number, y: number, size: number) {
+    if (brokerPhoto) {
+      add(4, shotstackImage(brokerPhoto, start, length, x, y, size, size, "contain"));
+      return;
+    }
+    add(3, shotstackShape(start, length, x, y, size, size, "#080808", 8));
+    add(4, shotstackAvatarText("PS", start, length, x, y, size));
+  }
+
   function addBroker(start: number, length: number, y = 138) {
     add(2, shotstackShape(start, length, 360, y, 606, 154, "#f3f3f1", 12));
-    add(4, shotstackImage(brokerPhoto, start, length, 128, y, 112, 112, "contain"));
-    add(5, shotstackText(`${brokerName} @`, start, length, 338, y - 42, 300, 42, 32, 700));
-    add(6, shotstackText(brokerCompany, start, length, 338, y - 3, 300, 42, 31, 700));
-    add(7, shotstackText(brokerPhone, start, length, 338, y + 39, 300, 34, 24, 600));
+    addBrokerAvatar(start, length, 128, y, 112);
+    const nameLine = brokerCompany ? `${brokerName} @` : brokerName;
+    const companyLine = brokerCompany || "PropShorts";
+    add(5, shotstackText(nameLine, start, length, 354, y - 39, 330, 36, 27, 700));
+    add(6, shotstackText(companyLine, start, length, 354, y - 1, 330, 36, 27, 700));
+    if (brokerPhone) add(7, shotstackText(brokerPhone, start, length, 354, y + 39, 330, 30, 21, 600));
   }
 
   let start = 0;
   addFooter(start, 4);
   add(10, shotstackText("Check\nOut\nThese\nProperties!", start, 4, 254, 540, 380, 390, 68, 700));
   add(3, shotstackShape(start, 4, 154, 860, 108, 108, "#f3f3f1", 6));
-  add(4, shotstackImage(brokerPhoto, start, 4, 154, 860, 108, 108, "contain"));
-  add(5, shotstackText(`${brokerName} @`, start, 4, 400, 822, 320, 42, 31, 700));
-  add(6, shotstackText(brokerCompany, start, 4, 400, 876, 320, 42, 30, 700));
-  add(7, shotstackText(brokerPhone, start, 4, 400, 932, 320, 34, 25, 600));
+  addBrokerAvatar(start, 4, 154, 860, 108);
+  add(5, shotstackText(brokerCompany ? `${brokerName} @` : brokerName, start, 4, 400, 824, 320, 38, 27, 700));
+  add(6, shotstackText(brokerCompany || "PropShorts", start, 4, 400, 874, 320, 38, 27, 700));
+  if (brokerPhone) add(7, shotstackText(brokerPhone, start, 4, 400, 924, 320, 30, 22, 600));
   start += 4;
 
   properties.forEach((property, index) => {
@@ -1325,8 +1361,8 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
   addFooter(start, 5);
   add(10, shotstackText("Call\nme.", start, 5, 360, 300, 460, 250, 132, 800, "center"));
   add(3, shotstackShape(start, 5, 360, 735, 148, 148, "#f3f3f1", 8));
-  add(4, shotstackImage(brokerPhoto, start, 5, 360, 735, 148, 148, "contain"));
-  add(12, shotstackText(`${brokerName} @\n${brokerCompany}\n${brokerPhone}`, start, 5, 360, 920, 560, 180, 36, 600, "center"));
+  addBrokerAvatar(start, 5, 360, 735, 148);
+  add(12, shotstackText([brokerCompany ? `${brokerName} @` : brokerName, brokerCompany || "PropShorts", brokerPhone].filter(Boolean).join("\n"), start, 5, 360, 920, 560, 180, 35, 600, "center"));
 
   const tracks = Object.keys(clipsByLane)
     .map(Number)
