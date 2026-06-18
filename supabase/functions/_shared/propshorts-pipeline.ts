@@ -1344,10 +1344,10 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
       add(0, shotstackImage(imageSet[imageIndex] ?? imageSet[0], start, length, 360, 548, 720, 570, "crop"));
       add(3, shotstackShape(start, length, 64 + badgeWidth / 2, 782, badgeWidth, 64, "#ffffff", 0));
       add(8, shotstackText(badge, start, length, 64 + badgeWidth / 2, 782, badgeWidth - 20, 48, badgeSize, 700, "center"));
-      add(9, shotstackText(`Property ${shotstackOrdinal(index)}`, start, length, 180, 912, 232, 42, 28, 500));
-      add(10, shotstackText(location, start, length, 310, 956, 492, 86, 34, 600));
-      add(11, shotstackShape(start, length, 310, 1022, 492, 2, "#111111", 0));
-      add(12, shotstackText(headline, start, length, 340, 1108, 552, 170, 38, 400));
+      add(9, shotstackText(`Property ${shotstackOrdinal(index)}`, start, length, 180, 902, 232, 34, 23, 500));
+      add(10, shotstackText(location, start, length, 310, 956, 492, 88, 30, 600));
+      add(11, shotstackShape(start, length, 310, 1028, 492, 2, "#111111", 0));
+      add(12, shotstackText(headline, start, length, 340, 1112, 552, 166, 37, 400));
       start += length;
     }
   });
