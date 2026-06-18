@@ -1262,7 +1262,7 @@ function buildShotstackEdit(input: Record<string, unknown>) {
 
   function addBroker(start: number, length: number, y = 138) {
     add(2, shotstackShape(start, length, 360, y, 606, 154, "#f3f3f1", 12));
-    add(4, shotstackImage(brokerPhoto, start, length, 128, y, 112, 112, "crop"));
+    add(4, shotstackImage(brokerPhoto, start, length, 128, y, 112, 112, "contain"));
     add(5, shotstackText(`${brokerName} @`, start, length, 338, y - 42, 300, 42, 32, 700));
     add(6, shotstackText(brokerCompany, start, length, 338, y - 3, 300, 42, 31, 700));
     add(7, shotstackText(brokerPhone, start, length, 338, y + 39, 300, 34, 24, 600));
@@ -1271,7 +1271,8 @@ function buildShotstackEdit(input: Record<string, unknown>) {
   let start = 0;
   addFooter(start, 4);
   add(10, shotstackText("Check Out\nThese\nProperties", start, 4, 252, 545, 360, 360, 68, 700));
-  add(4, shotstackImage(brokerPhoto, start, 4, 154, 930, 108, 108, "crop"));
+  add(3, shotstackShape(start, 4, 154, 930, 108, 108, "#f3f3f1", 6));
+  add(4, shotstackImage(brokerPhoto, start, 4, 154, 930, 108, 108, "contain"));
   add(5, shotstackText(`${brokerName} @`, start, 4, 400, 890, 320, 42, 31, 700));
   add(6, shotstackText(brokerCompany, start, 4, 400, 944, 320, 42, 30, 700));
   add(7, shotstackText(brokerPhone, start, 4, 400, 1000, 320, 34, 25, 600));
@@ -1320,7 +1321,8 @@ function buildShotstackEdit(input: Record<string, unknown>) {
 
   addFooter(start, 5);
   add(10, shotstackText("Call\nme.", start, 5, 360, 310, 460, 250, 140, 800, "center"));
-  add(4, shotstackImage(brokerPhoto, start, 5, 360, 785, 148, 148, "crop"));
+  add(3, shotstackShape(start, 5, 360, 785, 148, 148, "#f3f3f1", 8));
+  add(4, shotstackImage(brokerPhoto, start, 5, 360, 785, 148, 148, "contain"));
   add(12, shotstackText(`${brokerName} @\n${brokerCompany}\n${brokerPhone}`, start, 5, 360, 980, 560, 180, 38, 600, "center"));
 
   const tracks = Object.keys(clipsByLane)
