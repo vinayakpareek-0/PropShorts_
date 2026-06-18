@@ -1247,7 +1247,9 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
     : typeof brokerProfile.photoUrl === "string" && /^https?:\/\//i.test(brokerProfile.photoUrl)
       ? brokerProfile.photoUrl
       : logoUrl;
-  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 5) as Array<Record<string, unknown>> : [];
+  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 3) as Array<Record<string, unknown>> : [];
+  const propertyCount = Math.max(1, properties.length);
+  const propertyImageSlideLength = Math.max(2.2, Math.min(3.5, (23 / propertyCount - 1) / 3));
   const clipsByLane: Record<number, Array<Record<string, unknown>>> = {};
 
   function add(lane: number, ...clips: Array<Record<string, unknown>>) {
@@ -1270,12 +1272,12 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
 
   let start = 0;
   addFooter(start, 4);
-  add(10, shotstackText("Check Out\nThese\nProperties", start, 4, 252, 545, 360, 360, 68, 700));
-  add(3, shotstackShape(start, 4, 154, 930, 108, 108, "#f3f3f1", 6));
-  add(4, shotstackImage(brokerPhoto, start, 4, 154, 930, 108, 108, "contain"));
-  add(5, shotstackText(`${brokerName} @`, start, 4, 400, 890, 320, 42, 31, 700));
-  add(6, shotstackText(brokerCompany, start, 4, 400, 944, 320, 42, 30, 700));
-  add(7, shotstackText(brokerPhone, start, 4, 400, 1000, 320, 34, 25, 600));
+  add(10, shotstackText("Check\nOut\nThese\nProperties!", start, 4, 254, 540, 380, 390, 68, 700));
+  add(3, shotstackShape(start, 4, 154, 860, 108, 108, "#f3f3f1", 6));
+  add(4, shotstackImage(brokerPhoto, start, 4, 154, 860, 108, 108, "contain"));
+  add(5, shotstackText(`${brokerName} @`, start, 4, 400, 822, 320, 42, 31, 700));
+  add(6, shotstackText(brokerCompany, start, 4, 400, 876, 320, 42, 30, 700));
+  add(7, shotstackText(brokerPhone, start, 4, 400, 932, 320, 34, 25, 600));
   start += 4;
 
   properties.forEach((property, index) => {
@@ -1285,9 +1287,10 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
     start += 1;
 
     const images = shotstackPropertyImages(property);
-    const imageSet = images.length ? images : [fallbackImage];
-    for (let imageIndex = 0; imageIndex < Math.min(3, imageSet.length); imageIndex += 1) {
-      const length = 2.35;
+    const primaryImage = images[0] ?? fallbackImage;
+    const imageSet = [images[0] ?? primaryImage, images[1] ?? primaryImage, images[2] ?? primaryImage];
+    for (let imageIndex = 0; imageIndex < 3; imageIndex += 1) {
+      const length = propertyImageSlideLength;
       const price = shotstackFitText(property.price_label ?? "Price on request", 20).toUpperCase();
       const metrics = [
         typeof property.bedrooms === "number" ? `${property.bedrooms} BED` : null,
@@ -1320,10 +1323,10 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
   start += 4;
 
   addFooter(start, 5);
-  add(10, shotstackText("Call\nme.", start, 5, 360, 310, 460, 250, 140, 800, "center"));
-  add(3, shotstackShape(start, 5, 360, 785, 148, 148, "#f3f3f1", 8));
-  add(4, shotstackImage(brokerPhoto, start, 5, 360, 785, 148, 148, "contain"));
-  add(12, shotstackText(`${brokerName} @\n${brokerCompany}\n${brokerPhone}`, start, 5, 360, 980, 560, 180, 38, 600, "center"));
+  add(10, shotstackText("Call\nme.", start, 5, 360, 300, 460, 250, 132, 800, "center"));
+  add(3, shotstackShape(start, 5, 360, 735, 148, 148, "#f3f3f1", 8));
+  add(4, shotstackImage(brokerPhoto, start, 5, 360, 735, 148, 148, "contain"));
+  add(12, shotstackText(`${brokerName} @\n${brokerCompany}\n${brokerPhone}`, start, 5, 360, 920, 560, 180, 36, 600, "center"));
 
   const tracks = Object.keys(clipsByLane)
     .map(Number)
@@ -1359,32 +1362,102 @@ function buildShotstackEdit(input: Record<string, unknown>, narrationUrl?: strin
   };
 }
 
-function shotstackNarrationScript(input: Record<string, unknown>): string {
+function narrationWordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function dedupeNarrationSentences(value: string): string {
+  const seen = new Set<string>();
+  const sentences = value
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .filter((sentence) => {
+      const key = sentence.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  return sentences.join(" ").trim();
+}
+
+function fallbackShotstackNarrationScript(input: Record<string, unknown>): string {
   const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
   const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "your broker", 28);
-  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 5) as Array<Record<string, unknown>> : [];
-  const propertyLines = properties.map((property, index) => {
-    const label = index === 0 ? "First" : index === 1 ? "Second" : index === 2 ? "Third" : `Option ${index + 1}`;
-    const title = shotstackFitText(property.title ?? property.area ?? property.city ?? `property ${index + 1}`, 42);
-    const location = shotstackFitText([property.area, property.city].filter(Boolean).join(", ") || property.area || property.city || "", 36);
-    const headline = shotstackFitText(property.headline ?? property.description ?? "a strong match for your brief", 70);
-    const where = location ? ` in ${location}` : "";
-    return `${label}, ${title}${where}. ${headline}.`;
+  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 3) as Array<Record<string, unknown>> : [];
+  const labels = properties.map((property, index) => {
+    const location = shotstackFitText([property.area, property.city].filter(Boolean).join(", ") || property.area || property.city || property.title || `option ${index + 1}`, 32);
+    return location || `option ${index + 1}`;
   });
 
   return [
-    `Hi, this is ${brokerName}. I found a few properties that match your requirement.`,
-    ...propertyLines,
-    "I have added the full PDF with more details. Call me when you are ready, and I will help with the next step.",
+    `Hi, this is ${brokerName}. I found ${labels.length || "a few"} options that fit the brief, using real photos, practical details, and a clear comparison.`,
+    labels[0] ? `First is ${labels[0]}, a strong match for daily comfort and location.` : "The first option is a strong match for daily comfort and location.",
+    labels[1] ? `Second is ${labels[1]}, giving you another practical choice to compare.` : "The second option gives you another practical choice to compare.",
+    labels[2] ? `Third is ${labels[2]}, worth reviewing for value and lifestyle fit.` : "The shortlist stays focused so the decision is easier.",
+    "The PDF has prices, sizes, photos, and notes in one place. Take a look, then call me and I will help you shortlist the best one.",
   ].join(" ");
 }
 
-async function createCartesiaNarrationUrl(supabase: SupabaseClient, videoId: string, userId: string, input: Record<string, unknown>): Promise<string | null> {
+async function shotstackNarrationScript(input: Record<string, unknown>): Promise<string> {
+  const fallback = dedupeNarrationSentences(fallbackShotstackNarrationScript(input));
+  const openAiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openAiKey) return fallback;
+
+  const brokerProfile = input.brokerProfile && typeof input.brokerProfile === "object" ? input.brokerProfile as Record<string, unknown> : {};
+  const brokerName = shotstackFitText(brokerProfile.full_name ?? brokerProfile.fullName ?? "the broker", 28);
+  const properties = Array.isArray(input.properties) ? input.properties.slice(0, 3) as Array<Record<string, unknown>> : [];
+  const propertyBrief = properties.map((property, index) => ({
+    option: index + 1,
+    title: property.title ?? null,
+    area: property.area ?? null,
+    city: property.city ?? null,
+    price: property.price_label ?? null,
+    bedrooms: property.bedrooms ?? null,
+    size: property.size_label ?? property.sqft ?? null,
+    headline: property.headline ?? property.description ?? null,
+  }));
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: [
+          "Write one broker voiceover paragraph for a vertical real-estate shortlist video.",
+          "Return plain text only. No bullets. No labels. No markdown.",
+          "Length must be 85 to 95 words, designed to read naturally in about 33 to 37 seconds.",
+          "Use exactly 5 sentences. Do not repeat any sentence, phrase, or idea.",
+          "Mention the shortlist, briefly reference each property once, mention the PDF once, and end with a call/message invitation.",
+          "Avoid saying 'I found' more than once. Avoid repeated openings like First/Second/Third if they sound mechanical.",
+          `Broker name: ${brokerName}`,
+          `Properties: ${JSON.stringify(propertyBrief)}`,
+        ].join("\n"),
+        temperature: 0.35,
+        max_output_tokens: 220,
+      }),
+    });
+    if (!response.ok) return fallback;
+    const data = await response.json();
+    const script = dedupeNarrationSentences(collectResponseText(data));
+    const words = narrationWordCount(script);
+    if (words < 75 || words > 105 || script.split(/(?<=[.!?])\s+/).length < 4) return fallback;
+    return script;
+  } catch {
+    return fallback;
+  }
+}
+
+async function createCartesiaNarration(supabase: SupabaseClient, videoId: string, userId: string, input: Record<string, unknown>): Promise<{ url: string; transcript: string } | null> {
   const apiKey = Deno.env.get("CARTESIA_API_KEY");
   if (!apiKey) return null;
 
   const voiceId = Deno.env.get("CARTESIA_VOICE_ID") ?? "694f9389-aac1-45b6-b726-9d9369183238";
-  const transcript = shotstackNarrationScript(input).slice(0, 1800);
+  const transcript = (await shotstackNarrationScript(input)).slice(0, 1800);
   const response = await fetch("https://api.cartesia.ai/tts/bytes", {
     method: "POST",
     headers: {
@@ -1426,7 +1499,7 @@ async function createCartesiaNarrationUrl(supabase: SupabaseClient, videoId: str
   if (uploadError) throw uploadError;
 
   const { data } = supabase.storage.from("generated-videos").getPublicUrl(objectPath);
-  return data.publicUrl;
+  return { url: data.publicUrl, transcript };
 }
 
 async function shotstackApiRequest(apiUrl: string, apiKey: string, path: string, init: RequestInit = {}) {
@@ -1457,8 +1530,8 @@ async function renderVideoWithShotstack(supabase: SupabaseClient, videoId: strin
   if (error || !video) throw error ?? new Error("VIDEO_ROW_NOT_FOUND");
 
   const input = video.input_json && typeof video.input_json === "object" ? video.input_json as Record<string, unknown> : {};
-  const narrationUrl = await createCartesiaNarrationUrl(supabase, video.id, video.user_id, input);
-  const edit = buildShotstackEdit(input, narrationUrl);
+  const narration = await createCartesiaNarration(supabase, video.id, video.user_id, input);
+  const edit = buildShotstackEdit(input, narration?.url);
   const queued = await shotstackApiRequest(apiUrl, apiKey, "/render", {
     method: "POST",
     body: JSON.stringify(edit),
@@ -1471,6 +1544,7 @@ async function renderVideoWithShotstack(supabase: SupabaseClient, videoId: strin
     .update({
       provider: "shotstack",
       provider_job_id: providerJobId,
+      script: narration?.transcript ?? null,
       error_message: null,
       status: "processing",
     })
