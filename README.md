@@ -13,7 +13,7 @@ The MVP is broker-first. Client-facing access can be added later, but the curren
 - Refines requirements and searches for public property matches through server-side functions.
 - Stores recommendations, internal traces, generated PDFs, videos, and package records in Supabase.
 - Generates a designed PDF report with property details, comparison table, broker profile, and next-step call-to-action.
-- Creates a vertical PropShort video using a Node render worker, Sharp, FFmpeg, property images, and optional Cartesia voiceover.
+- Creates a vertical PropShort video using Shotstack, property images, and optional Cartesia voiceover.
 - Exposes broker dashboard, PDF list, PropShort list, package detail, and public share routes.
 
 ## Stack
@@ -22,11 +22,10 @@ The MVP is broker-first. Client-facing access can be added later, but the curren
 - **Auth / Database / Storage:** Supabase Auth, PostgreSQL, RLS, Storage
 - **Backend workflow:** Supabase Edge Functions
 - **PDF generation:** React-style layout logic built with `pdf-lib`
-- **Video rendering:** Node render worker with Sharp and FFmpeg
-- **Voiceover:** Cartesia TTS from the render worker
+- **Video rendering:** Shotstack render API, orchestrated from Supabase Edge Functions
+- **Voiceover:** Cartesia TTS, orchestrated from Supabase Edge Functions
 - **Payments:** Stripe checkout and webhook functions
 - **Frontend deployment:** Netlify
-- **Video worker deployment:** Render
 
 ## Product Flow
 
@@ -35,8 +34,8 @@ The MVP is broker-first. Client-facing access can be added later, but the curren
 3. Supabase Edge Functions parse, transcribe, and refine the requirement.
 4. The search workflow creates property recommendations and broker-only trace data.
 5. The PDF function generates a shareable report and uploads it to Supabase Storage.
-6. The video function creates a `generated_videos` row and queues the Render worker.
-7. The Render worker renders a vertical MP4 and uploads it to Supabase Storage.
+6. The video function creates a `generated_videos` row, builds the Shotstack edit, and queues the Shotstack render.
+7. Shotstack renders the vertical MP4, and the function stores the output status and URL in Supabase.
 8. The package is finalized and shown in the dashboard, package screen, PDF screen, PropShort screen, and public share route.
 
 ## Important Routes
@@ -95,25 +94,21 @@ Generated files are stored in Supabase Storage buckets such as:
 
 ## Video Rendering
 
-Supabase Edge Functions create the video record and enqueue the worker. The actual MP4 render is done outside Supabase because media rendering needs Node, image processing, and FFmpeg.
+Supabase Edge Functions create the video record, generate the narration script, request Cartesia audio when enabled, build the Shotstack edit JSON, and queue the Shotstack render.
 
-The worker lives at:
+The active video format is documented in:
 
 ```text
-src/render-worker/server.mjs
+docs/propshort-video-format.md
 ```
 
-The worker:
+The Shotstack path:
 
-- Loads the video row and package input from Supabase.
-- Fetches property images.
-- Builds vertical slide images with Sharp.
-- Generates optional Cartesia narration.
-- Stitches slides and audio into an MP4 with FFmpeg.
-- Uploads the final MP4 to the `generated-videos` bucket.
-- Marks the video row as `completed` or `failed`.
-
-Render free instances are often not enough for reliable media rendering. A paid Render plan, Railway, Fly.io, Google Cloud Run, or Remotion Lambda is recommended for production-quality video generation.
+- Uses real property images from the recommendation result.
+- Keeps the broker block, metric badge, property text, PDF page, and call page aligned to the PropShorts format.
+- Adds optional Cartesia narration to the render.
+- Stores video status, provider job ID, narration transcript, and final video URL in Supabase.
+- Falls back to the legacy webhook path only if Shotstack secrets are not configured.
 
 ## Local Development
 
@@ -127,12 +122,6 @@ Run the app:
 
 ```bash
 npm run dev
-```
-
-Run the render worker locally:
-
-```bash
-npm run render-worker
 ```
 
 Run checks:
@@ -166,27 +155,22 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-REMOTION_RENDER_WEBHOOK_URL=
-REMOTION_RENDER_SECRET=
+SHOTSTACK_API_KEY=
+SHOTSTACK_API_URL=
+CARTESIA_API_KEY=
+CARTESIA_VOICE_ID=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 ```
 
-Render worker:
+Legacy fallback, only if the old render webhook path is used:
 
 ```text
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_VIDEO_BUCKET=generated-videos
-RENDER_WORKER_SECRET=
-CARTESIA_API_KEY=
-CARTESIA_VOICE_ID=
-REMOTION_RENDER_TIMEOUT_MS=
-REMOTION_IMAGE_FETCH_TIMEOUT_MS=
-REMOTION_IMAGES_PER_PROPERTY=
+REMOTION_RENDER_WEBHOOK_URL=
+REMOTION_RENDER_SECRET=
 ```
 
-Do not expose provider secrets in frontend code. Store secrets in Supabase secrets, Netlify environment variables, or Render environment variables.
+Do not expose provider secrets in frontend code. Store provider secrets in Supabase secrets and frontend-only public variables in Netlify environment variables.
 
 ## Deployment
 
@@ -194,12 +178,6 @@ Frontend deployment is configured for Netlify:
 
 ```text
 netlify.toml
-```
-
-Render worker deployment is configured in:
-
-```text
-render.yaml
 ```
 
 Supabase function deployment is handled with the Supabase CLI or Supabase Management API.
@@ -216,6 +194,6 @@ Supabase function deployment is handled with the Supabase CLI or Supabase Manage
 ## Current Notes
 
 - The app currently creates one combined PropShort package video per run.
-- The video worker can render without narration if Cartesia is unavailable.
-- Video rendering reliability depends heavily on worker resources.
+- The Shotstack video path can render without narration if Cartesia is unavailable.
+- Shotstack sandbox renders may include a watermark.
 - Existing generated PDFs/videos do not automatically change after template updates; regenerate or rerender assets to see new templates.

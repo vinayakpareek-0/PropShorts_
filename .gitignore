@@ -26,10 +26,14 @@ yarn-debug.log*
 yarn-error.log*
 dev-server.log
 logs/
+.next-dev*.log
+tmp/
+tmp-*.json
 
 # local env files
 .env*.local
 .env
+supabase/.deploy.env
 supabase/.temp/
 
 # vercel
@@ -41,3 +45,6 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# Local assistant/workspace metadata
+.claude/
