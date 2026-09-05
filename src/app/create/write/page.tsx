@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CreateFlowShell from "@/components/create/CreateFlowShell";
 import { supabase } from "@/lib/supabase/client";
 
@@ -26,6 +26,46 @@ export default function CreateWritePage() {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loadingRequirement, setLoadingRequirement] = useState(false);
+  const [requirementId, setRequirementId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedRequirementId = new URLSearchParams(window.location.search).get("requirementId");
+    if (!savedRequirementId) return;
+    const requirementToEdit = savedRequirementId;
+
+    let cancelled = false;
+    setLoadingRequirement(true);
+    async function loadRequirement() {
+      const { data, error: queryError } = await supabase
+        .from("client_requirements")
+        .select("id,client_name,raw_input,transcribed_text,source_url")
+        .eq("id", requirementToEdit)
+        .single();
+
+        if (cancelled) return;
+        if (queryError || !data) {
+          setError("Could not load the saved requirement to edit.");
+          setLoadingRequirement(false);
+          return;
+        }
+        setRequirementId(data.id);
+        setClientName(data.client_name || "");
+        setText(data.raw_input || data.transcribed_text || data.source_url || "");
+        if (!cancelled) setLoadingRequirement(false);
+    }
+
+    loadRequirement().catch(() => {
+      if (!cancelled) {
+        setError("Could not load the saved requirement to edit.");
+        setLoadingRequirement(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit() {
     if (!clientName.trim() || !text.trim() || submitting) return;
@@ -37,6 +77,7 @@ export default function CreateWritePage() {
       "submit-client-requirement",
       {
         body: {
+          requirement_id: requirementId,
           client_name: clientName.trim(),
           input_type: "text",
           raw_input: text.trim(),
@@ -104,7 +145,7 @@ export default function CreateWritePage() {
             aria-label="Submit"
             className="flex items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-30"
             style={{ width: CHECK_BTN_SIZE, height: CHECK_BTN_SIZE }}
-            disabled={!clientName.trim() || !text.trim() || submitting}
+            disabled={!clientName.trim() || !text.trim() || submitting || loadingRequirement}
           >
             {submitting ? (
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />

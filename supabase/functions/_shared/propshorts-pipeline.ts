@@ -71,11 +71,20 @@ interface SearchOptions {
   demoMode?: boolean;
 }
 
+interface SearchProviderResult {
+  provider: "openai" | "tavily";
+  properties: PropertyCandidate[];
+  warning: string | null;
+  usage: Record<string, unknown>;
+}
+
 const PROPERTY_MAX_COUNT = 5;
 const DEFAULT_PROPERTY_TARGET_COUNT = 5;
 const PROPERTY_IMAGES_PER_OPTION = 3;
-const SEARCH_RETRY_ATTEMPTS = 3;
-const SEARCH_CANDIDATE_POOL_SIZE = 24;
+const SEARCH_CANDIDATE_POOL_SIZE = 12;
+const TAVILY_QUERY_LIMIT = 2;
+const TAVILY_EXTRACT_LIMIT = 8;
+const RERANK_CANDIDATE_LIMIT = 8;
 const BRAND_LOGO_URL = "https://propshorts.netlify.app/top_logo.png";
 const PDF_BUCKET = "generated-pdfs";
 const CLIENT_SAFE_FALLBACK_WARNING = "Live property search could not return enough verified listings. Regenerate before sending to a client.";
@@ -586,27 +595,6 @@ async function extractListingImagesFromSource(sourceUrl: string | null, title: s
   }
 }
 
-async function repairSearchJson(openAiKey: string, text: string, targetCount: number) {
-  if (!text.trim()) return null;
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      input: [
-        "Convert the following property-search result into strict JSON only.",
-        `Return exactly the schema requested by PropShorts, with up to ${targetCount} properties. Do not add Markdown.`,
-        "Keep only verified listing facts and verified image URLs. If a property has a listing page but no direct image URLs, keep trace.source_url and leave images empty.",
-        text,
-      ].join("\n\n"),
-      temperature: 0,
-    }),
-  });
-  if (!response.ok) return null;
-  const repaired = await response.json();
-  return parseJsonObject(collectResponseText(repaired));
-}
-
 function normalizeAiProperty(
   value: Record<string, unknown>,
   fallback: PropertyCandidate,
@@ -692,22 +680,117 @@ function sortImageQualifiedProperties(properties: PropertyCandidate[]) {
 }
 
 function minimumQualifiedPropertyCount(targetCount: number) {
-  if (targetCount === 3) return 2;
-  return targetCount;
+  return targetCount > 0 ? 1 : 0;
 }
 
-async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, inferred: ReturnType<typeof inferRequirement>, targetCount: number, attempt: number) {
-  const breadthInstruction = attempt === 1
-    ? "Search broadly first. Inspect a large candidate pool before choosing."
-    : attempt === 2
-      ? "The previous search did not produce enough image-backed listings. Broaden to nearby micro-markets and alternate listing portals."
-      : "Final retry: search the widest credible set of live property listing pages and return only properties with verified images.";
+function canonicalSourceUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|fbclid|gclid)/i.test(key)) url.searchParams.delete(key);
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function locationEvidence(property: PropertyCandidate) {
+  return [property.title, property.description, property.trace.source_url]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isLocationCompatible(property: PropertyCandidate, inferred: ReturnType<typeof inferRequirement>) {
+  const evidence = locationEvidence(property);
+  const city = inferred.city?.toLowerCase();
+  if (city && !evidence.includes(city)) return false;
+
+  const hasNearbyPermission = /\b(nearby|near by|surrounding|adjacent|close to)\b/i.test(inferred.note);
+  const area = inferred.area?.toLowerCase();
+  return !area || area === city || hasNearbyPermission || evidence.includes(area);
+}
+
+function hasUsableSource(property: PropertyCandidate) {
+  const sourceUrl = canonicalSourceUrl(property.trace.source_url);
+  if (!sourceUrl) return false;
+  try {
+    const url = new URL(sourceUrl);
+    return url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
+
+function selectLocationCompatible(properties: PropertyCandidate[], inferred: ReturnType<typeof inferRequirement>, rejected: string[]) {
+  return properties.filter((property) => {
+    if (!hasUsableSource(property)) {
+      rejected.push(`${property.title}: missing individual listing URL`);
+      return false;
+    }
+    if (!isLocationCompatible(property, inferred)) {
+      rejected.push(`${property.title}: location conflicts with brief`);
+      return false;
+    }
+    return true;
+  });
+}
+
+function tavilyImages(value: unknown, title: string) {
+  if (!Array.isArray(value)) return [];
+  return value.map((image, index) => {
+    const url = typeof image === "string" ? image : asString((image as Record<string, unknown>)?.url);
+    if (!url) return null;
+    return { id: `tavily-${index + 1}`, url, alt: `${title} photo ${index + 1}`, role: index === 0 ? "hero" : "interior" };
+  }).filter((image): image is { id: string; url: string; alt: string; role: string } => Boolean(image));
+}
+
+async function discoverWithTavily(tavilyKey: string | undefined, requirement: RequirementRow, inferred: ReturnType<typeof inferRequirement>): Promise<SearchProviderResult> {
+  if (!tavilyKey) {
+    return { provider: "tavily", properties: [], warning: "Tavily is not configured; continuing with web search.", usage: { configured: false } };
+  }
+
+  const queryBase = [inferred.rentOrBuy, inferred.bedrooms ? `${inferred.bedrooms} BHK` : null, inferred.propertyType, inferred.location, "listing"].filter(Boolean).join(" ");
+  const queries = [queryBase, `${inferred.location} ${inferred.propertyType} property listing photos`].slice(0, TAVILY_QUERY_LIMIT);
+  try {
+    const response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tavilyKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: queries.join(" OR "), search_depth: "basic", max_results: SEARCH_CANDIDATE_POOL_SIZE, include_images: true, include_image_descriptions: true }),
+    });
+    if (!response.ok) return { provider: "tavily", properties: [], warning: `Tavily search was unavailable (${response.status}); continuing with web search.`, usage: { configured: true, status: response.status } };
+    const payload = await response.json();
+    const results = Array.isArray(payload.results) ? payload.results as Array<Record<string, unknown>> : [];
+    const fallback = buildFallbackProperties(requirement, DEFAULT_PROPERTY_TARGET_COUNT);
+    const properties = results.slice(0, SEARCH_CANDIDATE_POOL_SIZE).map((result, index) => normalizeAiProperty({
+      external_property_id: `tavily-${index + 1}`,
+      title: asString(result.title) || `Property listing ${index + 1}`,
+      area: inferred.area,
+      city: inferred.city,
+      property_category: inferred.category,
+      property_type: inferred.propertyType,
+      rent_or_buy: inferred.rentOrBuy,
+      headline: asString(result.title) || "Property listing",
+      description: asString(result.content) || "Public listing discovered through web search.",
+      highlights: [],
+      images: tavilyImages(result.images, asString(result.title) || "Property listing"),
+      trace: { source_url: asString(result.url), platform: "Tavily", internal_notes: "Tavily discovery evidence." },
+    }, fallback[index % fallback.length], index));
+    return { provider: "tavily", properties, warning: properties.length ? null : "Tavily returned no usable listing pages.", usage: { configured: true, queries: queries.length, results: results.length } };
+  } catch {
+    return { provider: "tavily", properties: [], warning: "Tavily search failed; continuing with web search.", usage: { configured: true, failed: true } };
+  }
+}
+
+async function runOpenAiDiscovery(openAiKey: string, requirement: RequirementRow, inferred: ReturnType<typeof inferRequirement>, targetCount: number): Promise<SearchProviderResult> {
   const prompt = [
     "You are the PropShorts Search Agent. Return JSON only.",
-    `Find up to ${SEARCH_CANDIDATE_POOL_SIZE} credible live property listing candidates, then return the best matches for the broker requirement.`,
-    `Need ${targetCount} final recommendations, but return as many credible candidates as possible so PropShorts can independently verify photos and choose the final shortlist.`,
-    breadthInstruction,
+    `Find up to ${SEARCH_CANDIDATE_POOL_SIZE} credible live property listing candidates for this broker requirement. Need up to ${targetCount} final recommendations.`,
     "Use live web results. Every candidate must have its public individual listing page URL in trace.source_url; discard search result pages, category pages, and projects without an individual listing URL.",
+    `The requested location is ${inferred.location}. Never substitute a different city or similarly named locality. Nearby areas are allowed only when the requirement explicitly says nearby.`,
     "Prefer credible active listing pages with useful photos. Relevance and a valid source URL are more important than supplying direct image URLs because PropShorts will extract and verify listing photos itself.",
     "When you can see direct image URLs from that exact listing page, include up to 3 of them: hero/exterior, main interior, and another useful angle. Otherwise set images to [] and keep the source URL.",
     "Do not invent .jpg paths from listing titles, do not put listing-page URLs inside images, and never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
@@ -725,34 +808,69 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
     body: JSON.stringify({
       model: "gpt-4.1-mini",
       input: prompt,
-      temperature: attempt === 1 ? 0.15 : 0.25,
-      tools: [{ type: "web_search", search_context_size: "high" }],
+      temperature: 0,
+      tools: [{ type: "web_search", search_context_size: "medium" }],
       tool_choice: "auto",
     }),
   });
 
   if (!response.ok) {
     const details = await response.text();
-    console.error(`OPENAI_PROPERTY_SEARCH_FAILED:${attempt}:${response.status}:${details.slice(0, 700)}`);
-    return {
-      parsed: null,
-      rawProperties: [],
-      warning: `Search attempt ${attempt} failed with status ${response.status}.`,
-      providerFailed: true,
-    };
+    console.error(`OPENAI_PROPERTY_SEARCH_FAILED:${response.status}:${details.slice(0, 700)}`);
+    return { provider: "openai", properties: [], warning: `OpenAI search was unavailable (${response.status}).`, usage: { status: response.status, discovery_calls: 1 } };
   }
 
   const data = await response.json();
   const text = collectResponseText(data);
-  const parsed = parseJsonObject(text) || await repairSearchJson(openAiKey, text, SEARCH_CANDIDATE_POOL_SIZE);
+  const parsed = parseJsonObject(text);
   const rawProperties = Array.isArray(parsed?.properties) ? parsed.properties as Array<Record<string, unknown>> : [];
-  console.log(`OPENAI_PROPERTY_SEARCH_ATTEMPT:${attempt}:raw_properties=${rawProperties.length}:text_chars=${text.length}`);
-  return {
-    parsed,
-    rawProperties,
-    warning: rawProperties.length === 0 ? `Search attempt ${attempt} returned no parseable properties.` : null,
-    providerFailed: false,
-  };
+  const fallback = buildFallbackProperties(requirement, targetCount);
+  const properties = rawProperties.slice(0, SEARCH_CANDIDATE_POOL_SIZE).map((property, index) => normalizeAiProperty(property, fallback[index % fallback.length], index));
+  return { provider: "openai", properties, warning: properties.length ? null : "OpenAI search returned no parseable listings.", usage: { discovery_calls: 1, raw_candidates: rawProperties.length } };
+}
+
+async function extractTavilyImages(tavilyKey: string | undefined, properties: PropertyCandidate[]) {
+  if (!tavilyKey || !properties.length) return properties;
+  const urls = properties.map((property) => canonicalSourceUrl(property.trace.source_url)).filter((url): url is string => Boolean(url)).slice(0, TAVILY_EXTRACT_LIMIT);
+  if (!urls.length) return properties;
+  try {
+    const response = await fetch("https://api.tavily.com/extract", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tavilyKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ urls, extract_depth: "basic", include_images: true }),
+    });
+    if (!response.ok) return properties;
+    const payload = await response.json();
+    const byUrl = new Map((Array.isArray(payload.results) ? payload.results : []).map((item: Record<string, unknown>) => [canonicalSourceUrl(asString(item.url)), item]));
+    return properties.map((property) => {
+      const extracted = byUrl.get(canonicalSourceUrl(property.trace.source_url));
+      if (!extracted) return property;
+      return { ...property, images: [...property.images, ...tavilyImages(extracted.images, property.title)], trace: { ...property.trace, internal_notes: `${property.trace.internal_notes || ""} Tavily source extraction checked.`.trim() } };
+    });
+  } catch {
+    return properties;
+  }
+}
+
+async function rerankWithOpenAi(openAiKey: string, properties: PropertyCandidate[], inferred: ReturnType<typeof inferRequirement>) {
+  if (properties.length < 2) return properties;
+  const candidates = properties.slice(0, RERANK_CANDIDATE_LIMIT).map((property) => ({
+    source_url: property.trace.source_url, title: property.title, area: property.area, city: property.city, price: property.price_label, bedrooms: property.bedrooms, sqft: property.sqft, description: property.description.slice(0, 500),
+  }));
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4.1-mini", temperature: 0, input: `Return JSON only: {"ordered_source_urls":["..."]}. Rank these already location-validated public listing candidates against the brief. Do not add URLs or candidates. Brief: ${JSON.stringify(inferred)} Candidates: ${JSON.stringify(candidates)}` }),
+    });
+    if (!response.ok) return properties;
+    const parsed = parseJsonObject(collectResponseText(await response.json()));
+    const ordered = Array.isArray(parsed?.ordered_source_urls) ? parsed.ordered_source_urls.filter((url): url is string => typeof url === "string") : [];
+    const positions = new Map(ordered.map((url, index) => [canonicalSourceUrl(url), index]));
+    return [...properties].sort((a, b) => (positions.get(canonicalSourceUrl(a.trace.source_url)) ?? 999) - (positions.get(canonicalSourceUrl(b.trace.source_url)) ?? 999));
+  } catch {
+    return properties;
+  }
 }
 
 export async function searchProperties(requirement: RequirementRow, propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT, options: SearchOptions = {}): Promise<{
@@ -777,7 +895,9 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     };
   }
 
-  if (!openAiKey) {
+  const tavilyKey = Deno.env.get("TAVILY_API_KEY");
+
+  if (!openAiKey && !tavilyKey) {
     return {
       searchSummary: {
         interpreted_brief: inferred.note,
@@ -789,48 +909,35 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
     };
   }
 
-  const fallbackProperties = buildFallbackProperties(requirement, targetCount);
-  const collected = new Map<string, PropertyCandidate>();
   const warnings: string[] = [];
-  let latestSummary: Record<string, unknown> | null = null;
-  let providerFailureCount = 0;
-  let totalRawProperties = 0;
+  const rejected: string[] = [];
+  const [tavilyResult, openAiResult] = await Promise.all([
+    discoverWithTavily(tavilyKey, requirement, inferred),
+    openAiKey
+      ? runOpenAiDiscovery(openAiKey, requirement, inferred, targetCount)
+      : Promise.resolve({ provider: "openai" as const, properties: [], warning: "OpenAI search is not configured; continuing with Tavily.", usage: { configured: false } }),
+  ]);
+  for (const result of [tavilyResult, openAiResult]) if (result.warning) warnings.push(result.warning);
 
-  for (let attempt = 1; attempt <= SEARCH_RETRY_ATTEMPTS; attempt += 1) {
-    const { parsed, rawProperties, warning, providerFailed } = await runSearchAttempt(openAiKey, requirement, inferred, targetCount, attempt);
-    if (providerFailed) providerFailureCount += 1;
-    totalRawProperties += rawProperties.length;
-    if (warning) warnings.push(warning);
-    if (parsed?.search_summary && typeof parsed.search_summary === "object") {
-      latestSummary = parsed.search_summary as Record<string, unknown>;
-    }
-
-    const normalized = await Promise.all(rawProperties.slice(0, SEARCH_CANDIDATE_POOL_SIZE).map((property, index) =>
-      enrichPropertyWithSourceImages(normalizeAiProperty(property, fallbackProperties[index % fallbackProperties.length], index))
-    ));
-
-    for (const property of sortImageQualifiedProperties(normalized)) {
-      const key = propertyDedupeKey(property);
-      if (key && !collected.has(key)) collected.set(key, { ...property, sort_order: collected.size + 1 });
-    }
-
-    if (collected.size >= targetCount) break;
+  const collected = new Map<string, PropertyCandidate>();
+  for (const property of selectLocationCompatible([...tavilyResult.properties, ...openAiResult.properties], inferred, rejected)) {
+    const key = canonicalSourceUrl(property.trace.source_url) || propertyDedupeKey(property);
+    if (key && !collected.has(key)) collected.set(key, property);
   }
-
-  const imageQualifiedProperties = Array.from(collected.values()).slice(0, targetCount).map((property, index) => ({
+  const withTavilyImages = await extractTavilyImages(tavilyKey, Array.from(collected.values()));
+  const enriched = await Promise.all(withTavilyImages.slice(0, RERANK_CANDIDATE_LIMIT).map(enrichPropertyWithSourceImages));
+  const imageQualified = sortImageQualifiedProperties(enriched);
+  const ranked = openAiKey ? await rerankWithOpenAi(openAiKey, imageQualified, inferred) : imageQualified;
+  const imageQualifiedProperties = ranked.slice(0, targetCount).map((property, index) => ({
     ...property,
     sort_order: index + 1,
   }));
 
   const minimumQualifiedCount = minimumQualifiedPropertyCount(targetCount);
 
-  if (providerFailureCount === SEARCH_RETRY_ATTEMPTS) {
-    throw new Error(`PROPERTY_SEARCH_PROVIDER_FAILED: OpenAI property search failed on all ${SEARCH_RETRY_ATTEMPTS} attempts.`);
-  }
-
   if (imageQualifiedProperties.length < minimumQualifiedCount) {
-    console.error(`IMAGE_QUALIFIED_SEARCH_FAILED: raw_properties=${totalRawProperties}:qualified=${imageQualifiedProperties.length}:target=${targetCount}:provider_failures=${providerFailureCount}`);
-    throw new Error(`IMAGE_QUALIFIED_SEARCH_FAILED: Found ${imageQualifiedProperties.length}/${targetCount} listings with real images after ${SEARCH_RETRY_ATTEMPTS} search attempts.`);
+    console.error(`IMAGE_QUALIFIED_SEARCH_FAILED:qualified=${imageQualifiedProperties.length}:target=${targetCount}:rejected=${rejected.length}`);
+    throw new Error(`IMAGE_QUALIFIED_SEARCH_FAILED: Found no verified listings with usable property images.`);
   }
 
   if (imageQualifiedProperties.length < targetCount) {
@@ -840,11 +947,11 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
   return {
     searchSummary: {
       interpreted_brief: inferred.note,
-      ...(latestSummary ?? {}),
-      search_attempts: SEARCH_RETRY_ATTEMPTS,
       requested_property_count: targetCount,
       image_qualified_count: imageQualifiedProperties.length,
       warnings,
+      provider_usage: { tavily: tavilyResult.usage, openai: { ...openAiResult.usage, rerank_calls: openAiKey && imageQualified.length >= 2 ? 1 : 0 } },
+      rejected_candidates: rejected.slice(0, 20),
     },
     properties: imageQualifiedProperties,
   };

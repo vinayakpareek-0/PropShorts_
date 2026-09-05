@@ -9,6 +9,7 @@ const corsHeaders = {
 type InputType = "text" | "voice" | "url";
 
 interface SubmitRequirementBody {
+  requirement_id?: string;
   client_name?: string;
   input_type?: InputType;
   raw_input?: string;
@@ -162,17 +163,31 @@ Deno.serve(async (req) => {
     );
   }
 
-  const { data, error } = await supabase
-    .from("client_requirements")
-    .insert({
-      user_id: user.id,
-      client_name: clientName,
-      input_type: inputType,
-      raw_input: rawInput || null,
-      source_url: sourceUrl,
-      audio_file_url: audioFileUrl,
-      status: "draft",
-    })
+  const requirementId = body.requirement_id?.trim();
+  const payload = {
+    client_name: clientName,
+    input_type: inputType,
+    raw_input: rawInput || null,
+    source_url: sourceUrl,
+    audio_file_url: audioFileUrl,
+    transcribed_text: null,
+    refined_requirements_json: null,
+    requirements_json: null,
+    error_message: null,
+    status: "draft",
+  };
+
+  const query = requirementId
+    ? supabase
+      .from("client_requirements")
+      .update(payload)
+      .eq("id", requirementId)
+      .eq("user_id", user.id)
+    : supabase
+      .from("client_requirements")
+      .insert({ ...payload, user_id: user.id });
+
+  const { data, error } = await query
     .select("id,status")
     .single();
 
@@ -181,8 +196,8 @@ Deno.serve(async (req) => {
       {
         success: false,
         error: {
-          code: "INSERT_FAILED",
-          message: "Could not save the client requirement.",
+          code: requirementId ? "UPDATE_FAILED" : "INSERT_FAILED",
+          message: requirementId ? "Could not update the client requirement." : "Could not save the client requirement.",
           details: error.message,
         },
       },

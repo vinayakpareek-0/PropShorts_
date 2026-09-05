@@ -338,7 +338,7 @@ export default function CreateConfirmPage() {
           ) : null}
 
           <Link
-            href="/create/write"
+            href={requirement ? `/create/write?requirementId=${encodeURIComponent(requirement.id)}` : "/create/write"}
             className="text-[15px] font-medium tracking-wide text-black transition-opacity hover:opacity-50"
           >
             Edit What You Wrote.
