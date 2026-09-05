@@ -2,9 +2,20 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SidebarShell from "@/components/layout/SidebarShell";
 import { supabase } from "@/lib/supabase/client";
+
+const BAR_HEIGHT = 50;
+
+type StepStatus = "pending" | "running" | "done" | "failed";
+
+interface Step {
+  id: "start" | "search" | "video" | "pdf" | "finalize";
+  label: string;
+  description: string;
+  status: StepStatus;
+}
 
 interface FunctionResponse {
   success: boolean;
@@ -14,6 +25,14 @@ interface FunctionResponse {
     message?: string;
   };
 }
+
+const initialSteps: Step[] = [
+  { id: "start", label: "Starting run", description: "Creating the backend job for this requirement.", status: "pending" },
+  { id: "search", label: "Searching properties", description: "Building a client-safe shortlist and internal trace.", status: "pending" },
+  { id: "video", label: "Preparing video", description: "Generating the property video in the background.", status: "pending" },
+  { id: "pdf", label: "Creating PDF", description: "Preparing the shareable report.", status: "pending" },
+  { id: "finalize", label: "Finalizing package", description: "Saving the completed package to your dashboard.", status: "pending" },
+];
 
 function friendlyPipelineError(message: string) {
   if (message.includes("PROPERTY_SEARCH_PROVIDER_FAILED")) {
@@ -47,6 +66,16 @@ async function functionErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? friendlyPipelineError(error.message) : fallback;
 }
 
+function activeStepCopy(steps: Step[]) {
+  const failed = steps.find((step) => step.status === "failed");
+  if (failed) return failed.description;
+
+  const running = steps.find((step) => step.status === "running");
+  if (running) return running.description;
+
+  return "Getting the generation pipeline ready.";
+}
+
 export default function ProcessingPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -57,7 +86,18 @@ export default function ProcessingPageClient() {
   const started = useRef(false);
 
   const [runId, setRunId] = useState(runIdFromUrl);
+  const [steps, setSteps] = useState<Step[]>(initialSteps);
   const [error, setError] = useState("");
+
+  const progress = useMemo(() => {
+    const done = steps.filter((step) => step.status === "done").length;
+    const running = steps.some((step) => step.status === "running") ? 0.5 : 0;
+    return Math.min(100, ((done + running) / steps.length) * 100);
+  }, [steps]);
+
+  function setStepStatus(id: Step["id"], status: StepStatus) {
+    setSteps((current) => current.map((step) => (step.id === id ? { ...step, status } : step)));
+  }
 
   async function invokeStep(functionName: string, body: Record<string, string>) {
     const { data, error: invokeError } = await supabase.functions.invoke<FunctionResponse>(functionName, { body });
@@ -85,15 +125,20 @@ export default function ProcessingPageClient() {
 
       if (runIdFromUrl) {
         setRunId(runIdFromUrl);
+        setStepStatus("start", "done");
+        setStepStatus("search", "running");
         return;
       }
 
       try {
+        setStepStatus("start", "running");
         const start = await invokeStep("start-recommendation-run", { requirement_id: requirementId });
         const newRunId = start.run_id;
         if (!newRunId) throw new Error("The backend did not return a run ID.");
 
         setRunId(newRunId);
+        setStepStatus("start", "done");
+        setStepStatus("search", "running");
         const params = new URLSearchParams({ requirementId, propertyCount, runId: newRunId });
         if (demoMode) params.set("demo", "1");
         router.replace(`/create/processing/${newRunId}?${params.toString()}`);
@@ -108,6 +153,7 @@ export default function ProcessingPageClient() {
           ? friendlyPipelineError(pipelineError.message)
           : "Package generation could not be started. Please try again.";
         setError(message);
+        setSteps((current) => current.map((step) => (step.status === "running" ? { ...step, status: "failed" } : step)));
       }
     }
 
@@ -131,15 +177,18 @@ export default function ProcessingPageClient() {
 
       if (runError || !run) {
         setError("We could not refresh this package. Please return to your dashboard and try again.");
+        setStepStatus("search", "failed");
         return;
       }
 
       if (run.status === "failed") {
         setError(friendlyPipelineError(run.error_message || "Package generation could not be completed. Please try again."));
+        setStepStatus("search", "failed");
         return;
       }
 
       if (run.status === "completed") {
+        setSteps((current) => current.map((step) => ({ ...step, status: "done" })));
         const { data: pkg, error: packageError } = await supabase
           .from("recommendation_packages")
           .select("id")
@@ -167,11 +216,7 @@ export default function ProcessingPageClient() {
     };
   }, [error, router, runId]);
 
-  const statusCopy = error
-    ? error
-    : runId
-      ? "Working in the background. You can safely leave this page and return to your dashboard later."
-      : "Starting your package.";
+  const statusCopy = error || activeStepCopy(steps);
 
   return (
     <SidebarShell>
@@ -181,21 +226,53 @@ export default function ProcessingPageClient() {
             <h1 className="text-[52px] font-normal leading-[1.05] tracking-[-0.02em] text-black sm:text-[74px]">
               {error ? "Needs attention." : "Creating."}
             </h1>
-            <p className={`max-w-[390px] text-[20px] font-normal leading-relaxed ${error ? "text-red-600" : "text-black"}`}>
+            <p className={`max-w-[340px] text-[20px] font-normal leading-relaxed ${error ? "text-red-600" : "text-black"}`}>
               {statusCopy}
             </p>
           </div>
 
-          <div className="w-full rounded-2xl bg-[#f5f5f5] px-5 py-5 text-center">
-            <div className="mx-auto h-3 w-[82%] overflow-hidden rounded-full bg-[#e8e8e8]">
+          <div className="w-full">
+            <div
+              className="mx-auto w-[82%] overflow-hidden rounded-lg bg-[#e8e8e8]"
+              style={{ height: BAR_HEIGHT }}
+              role="progressbar"
+              aria-label="Processing"
+              aria-valuenow={Math.round(progress)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
               <div
-                className={`h-full rounded-full transition-all duration-500 ${error ? "bg-red-500" : "bg-[linear-gradient(90deg,#9b51e0_0%,#2d9cdb_45%,#56ccf2_75%,#a1c866_100%)]"}`}
-                style={{ width: error ? "100%" : runId ? "58%" : "18%" }}
+                className={`h-full rounded-lg transition-all duration-500 ${error ? "bg-red-500" : ""}`}
+                style={{
+                  width: `${Math.max(8, progress)}%`,
+                  background: error ? undefined : "linear-gradient(90deg, #9b51e0 0%, #2d9cdb 45%, #56ccf2 75%, #a1c866 100%)",
+                }}
               />
             </div>
-            <p className="mt-5 text-[14px] leading-6 text-black/50">
-              We will save the result to your dashboard as soon as it is ready.
-            </p>
+
+            <div className="mt-8 grid gap-3">
+              {steps.map((step) => (
+                <div key={step.id} className="grid grid-cols-[28px_1fr] items-start gap-3 rounded-2xl bg-[#f5f5f5] px-4 py-3">
+                  <span
+                    className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold ${
+                      step.status === "done"
+                        ? "bg-[#c8cc7c] text-black"
+                        : step.status === "running"
+                          ? "bg-black text-white"
+                          : step.status === "failed"
+                            ? "bg-red-500 text-white"
+                            : "bg-white text-black/30"
+                    }`}
+                  >
+                    {step.status === "done" ? "✓" : step.status === "failed" ? "!" : ""}
+                  </span>
+                  <div>
+                    <p className="text-[14px] font-semibold text-black">{step.label}</p>
+                    <p className="mt-0.5 text-[12px] leading-5 text-black/45">{step.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </main>
 
@@ -212,7 +289,7 @@ export default function ProcessingPageClient() {
             href="/dashboard"
             className="text-[24px] font-normal text-black transition-opacity hover:opacity-50"
           >
-            Dashboard
+            Cancel
           </Link>
         </footer>
       </div>
