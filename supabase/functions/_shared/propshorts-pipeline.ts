@@ -725,10 +725,13 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
   });
 
   if (!response.ok) {
+    const details = await response.text();
+    console.error(`OPENAI_PROPERTY_SEARCH_FAILED:${attempt}:${response.status}:${details.slice(0, 700)}`);
     return {
       parsed: null,
       rawProperties: [],
       warning: `Search attempt ${attempt} failed with status ${response.status}.`,
+      providerFailed: true,
     };
   }
 
@@ -736,10 +739,12 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
   const text = collectResponseText(data);
   const parsed = parseJsonObject(text) || await repairSearchJson(openAiKey, text, SEARCH_CANDIDATE_POOL_SIZE);
   const rawProperties = Array.isArray(parsed?.properties) ? parsed.properties as Array<Record<string, unknown>> : [];
+  console.log(`OPENAI_PROPERTY_SEARCH_ATTEMPT:${attempt}:raw_properties=${rawProperties.length}:text_chars=${text.length}`);
   return {
     parsed,
     rawProperties,
     warning: rawProperties.length === 0 ? `Search attempt ${attempt} returned no parseable properties.` : null,
+    providerFailed: false,
   };
 }
 
@@ -781,9 +786,13 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
   const collected = new Map<string, PropertyCandidate>();
   const warnings: string[] = [];
   let latestSummary: Record<string, unknown> | null = null;
+  let providerFailureCount = 0;
+  let totalRawProperties = 0;
 
   for (let attempt = 1; attempt <= SEARCH_RETRY_ATTEMPTS; attempt += 1) {
-    const { parsed, rawProperties, warning } = await runSearchAttempt(openAiKey, requirement, inferred, targetCount, attempt);
+    const { parsed, rawProperties, warning, providerFailed } = await runSearchAttempt(openAiKey, requirement, inferred, targetCount, attempt);
+    if (providerFailed) providerFailureCount += 1;
+    totalRawProperties += rawProperties.length;
     if (warning) warnings.push(warning);
     if (parsed?.search_summary && typeof parsed.search_summary === "object") {
       latestSummary = parsed.search_summary as Record<string, unknown>;
@@ -808,7 +817,12 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
 
   const minimumQualifiedCount = minimumQualifiedPropertyCount(targetCount);
 
+  if (providerFailureCount === SEARCH_RETRY_ATTEMPTS) {
+    throw new Error(`PROPERTY_SEARCH_PROVIDER_FAILED: OpenAI property search failed on all ${SEARCH_RETRY_ATTEMPTS} attempts.`);
+  }
+
   if (imageQualifiedProperties.length < minimumQualifiedCount) {
+    console.error(`IMAGE_QUALIFIED_SEARCH_FAILED: raw_properties=${totalRawProperties}:qualified=${imageQualifiedProperties.length}:target=${targetCount}:provider_failures=${providerFailureCount}`);
     throw new Error(`IMAGE_QUALIFIED_SEARCH_FAILED: Found ${imageQualifiedProperties.length}/${targetCount} listings with real images after ${SEARCH_RETRY_ATTEMPTS} search attempts.`);
   }
 

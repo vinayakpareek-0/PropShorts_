@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
 
   if (!transcriptResponse.ok) {
     const details = await transcriptResponse.text();
+    console.error(`OPENAI_TRANSCRIPTION_FAILED:${transcriptResponse.status}:${details.slice(0, 500)}`);
     return jsonResponse(
       {
         success: false,

@@ -182,7 +182,7 @@ export default function CreateTalkPage() {
     );
 
     if (submitError || !submitData?.success || !submitData.requirement_id) {
-      setError(submitError?.message || submitData?.error?.message || "Could not save the voice requirement.");
+      setError("Could not save the voice requirement. Please try again.");
       setRecordingState("ready");
       setStatusText("Recording ready");
       return;
@@ -198,7 +198,7 @@ export default function CreateTalkPage() {
       });
 
     if (transcriptError || !transcriptData?.success) {
-      setError(transcriptError?.message || transcriptData?.error?.message || "Could not transcribe the recording.");
+      setError("Could not transcribe the recording. Please try again or type the brief.");
       setRecordingState("ready");
       setStatusText("Recording ready");
       return;

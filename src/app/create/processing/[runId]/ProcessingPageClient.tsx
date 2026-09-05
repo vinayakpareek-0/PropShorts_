@@ -62,6 +62,22 @@ const initialSteps: Step[] = [
   },
 ];
 
+function friendlyPipelineError(message: string) {
+  if (message.includes("PROPERTY_SEARCH_PROVIDER_FAILED")) {
+    return "The property search service is unavailable right now. Please try again in a few minutes.";
+  }
+
+  if (message.includes("IMAGE_QUALIFIED_SEARCH_FAILED")) {
+    return "Could not find enough listings with usable property images. Try a broader location or budget.";
+  }
+
+  if (message.includes("UNAUTHORIZED")) {
+    return "Please sign in again before generating this package.";
+  }
+
+  return message.includes("_") || message.length > 180 ? "Package generation could not be completed. Please try again." : message;
+}
+
 async function functionErrorMessage(error: unknown, fallback: string) {
   if (!error || typeof error !== "object") return fallback;
 
@@ -69,13 +85,13 @@ async function functionErrorMessage(error: unknown, fallback: string) {
   if (maybeContext instanceof Response) {
     try {
       const body = await maybeContext.clone().json() as { error?: { message?: string }; message?: string };
-      return body.error?.message || body.message || fallback;
+      return friendlyPipelineError(body.error?.message || body.message || fallback);
     } catch {
       return fallback;
     }
   }
 
-  return error instanceof Error ? error.message : fallback;
+  return error instanceof Error ? friendlyPipelineError(error.message) : fallback;
 }
 
 function activeStepCopy(steps: Step[]) {
@@ -187,7 +203,9 @@ export default function ProcessingPageClient() {
           router.replace(`/packages/${finalPackage.package_id}`);
         }, 650);
       } catch (pipelineError) {
-        const message = pipelineError instanceof Error ? pipelineError.message : "Package generation failed.";
+        const message = pipelineError instanceof Error
+          ? friendlyPipelineError(pipelineError.message)
+          : "Package generation could not be completed. Please try again.";
         setError(message);
         setSteps((current) =>
           current.map((step) => (step.status === "running" ? { ...step, status: "failed" } : step)),

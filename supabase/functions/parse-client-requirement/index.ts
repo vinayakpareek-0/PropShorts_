@@ -68,6 +68,151 @@ function asNullableNumber(value: unknown): number | null {
   return null;
 }
 
+function titleCase(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function parseBudgetFromText(rawInput: string): Pick<RefinedRequirement, "budget" | "budget_label" | "currency"> {
+  const text = rawInput.toLowerCase();
+  const match =
+    text.match(/\b(?:under|below|upto|up to|around|approx(?:imately)?|budget(?:\s+of)?|within|max(?:imum)?)\s*(?:rs\.?|inr|₹)?\s*([0-9]+(?:\.[0-9]+)?)\s*(k|thousand|lakh|lac|l|cr|crore)?\b/i) ||
+    text.match(/\b(?:rs\.?|inr|₹)\s*([0-9]+(?:\.[0-9]+)?)\s*(k|thousand|lakh|lac|l|cr|crore)?\b/i) ||
+    text.match(/\b([0-9]+(?:\.[0-9]+)?)\s*(k|thousand|lakh|lac|l|cr|crore)\b/i);
+
+  if (!match) return { budget: null, budget_label: null, currency: null };
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return { budget: null, budget_label: null, currency: null };
+
+  const unit = match[2]?.toLowerCase();
+  const multiplier = unit === "cr" || unit === "crore"
+    ? 10_000_000
+    : unit === "lakh" || unit === "lac" || unit === "l"
+      ? 100_000
+      : unit === "k" || unit === "thousand"
+        ? 1_000
+        : 1;
+  const budget = Math.round(amount * multiplier);
+  const budgetLabel = `INR ${match[1]}${unit ? ` ${unit}` : ""}${/rent|lease|month|monthly|pg|stay/.test(text) ? "/month" : ""}`;
+
+  return {
+    budget,
+    budget_label: budgetLabel,
+    currency: "INR",
+  };
+}
+
+function parseLocationFromText(rawInput: string): string | null {
+  const text = rawInput.replace(/[.,;]+/g, " ");
+  const knownPlaces = [
+    "greater noida",
+    "new delhi",
+    "delhi ncr",
+    "gurgaon",
+    "gurugram",
+    "noida",
+    "delhi",
+    "bengaluru",
+    "bangalore",
+    "mumbai",
+    "pune",
+    "hyderabad",
+    "chennai",
+    "kolkata",
+    "jaipur",
+    "ahmedabad",
+    "ahemdabad",
+    "lucknow",
+    "indore",
+    "faridabad",
+    "ghaziabad",
+  ];
+  const lower = text.toLowerCase();
+  const matches = knownPlaces.filter((place) => new RegExp(`\\b${place.replace(/\s+/g, "\\s+")}\\b`, "i").test(lower));
+
+  if (matches.length) {
+    const unique = Array.from(new Set(matches.map(titleCase)));
+    return unique.slice(0, 2).join(" / ");
+  }
+
+  const phraseMatch = text.match(/\b(?:in|near|around|at)\s+([a-z][a-z\s-]{2,40})(?:\s+(?:under|below|upto|up to|for|with|and|or|rent|buy|sale|flat|apartment|villa|pg|plot)\b|$)/i);
+  return phraseMatch?.[1] ? titleCase(phraseMatch[1]) : null;
+}
+
+function ruleBasedRequirement(rawInput: string): RefinedRequirement {
+  const text = rawInput.toLowerCase();
+  const bedroomsMatch = text.match(/\b([1-9])\s*(?:bhk|bed|beds|bedroom|bedrooms)\b/i);
+  const bathroomsMatch = text.match(/\b([1-9])\s*(?:bath|baths|bathroom|bathrooms)\b/i);
+  const sqftMatch = text.match(/\b([0-9]{3,5})\s*(?:sq\.?\s*ft|sqft|square\s+feet)\b/i);
+  const budget = parseBudgetFromText(rawInput);
+  const location = parseLocationFromText(rawInput);
+
+  const propertyType = /\bpg\b|paying guest|shared living|co-?living/.test(text)
+    ? "PG stay"
+    : /apartment/.test(text)
+      ? "Apartment"
+      : /\bflat\b/.test(text)
+        ? "Flat"
+        : /\bvilla\b/.test(text)
+          ? "Villa"
+          : /\bplot|land\b/.test(text)
+            ? "Land"
+            : /\boffice|shop|commercial\b/.test(text)
+              ? "Commercial space"
+              : null;
+
+  const propertyCategory: RefinedRequirement["property_category"] = /\bplot|land\b/.test(text)
+    ? "land"
+    : /\boffice|shop|commercial\b/.test(text)
+      ? "commercial"
+      : "residential";
+
+  const purpose: RefinedRequirement["purpose"] = /\brent|lease|month|monthly|pg|stay\b/.test(text)
+    ? "rent"
+    : /\bbuy|purchase|sale|sell\b/.test(text)
+      ? "buy"
+      : "unknown";
+
+  const bedrooms = bedroomsMatch ? Number(bedroomsMatch[1]) : null;
+  const bathrooms = bathroomsMatch ? Number(bathroomsMatch[1]) : null;
+  const sqft = sqftMatch ? Number(sqftMatch[1]) : null;
+  const summaryParts = [
+    bedrooms ? `${bedrooms} BHK` : null,
+    propertyType?.toLowerCase() ?? "property",
+    location ? `in ${location}` : null,
+    budget.budget_label ? `with budget ${budget.budget_label}` : null,
+  ].filter(Boolean);
+
+  return {
+    location,
+    budget: budget.budget,
+    budget_label: budget.budget_label,
+    currency: budget.currency,
+    property_type: propertyType,
+    property_category: propertyCategory,
+    bedrooms,
+    bathrooms,
+    purpose,
+    sqft_min: sqft,
+    sqft_max: sqft,
+    must_haves: [],
+    deal_breakers: [],
+    assumptions: ["Structured from the broker brief without AI refinement."],
+    missing_fields: [
+      !budget.budget ? "budget" : null,
+      !location ? "location" : null,
+      !propertyType ? "property type" : null,
+    ].filter((item): item is string => Boolean(item)),
+    confidence: location || budget.budget || bedrooms || propertyType ? 0.62 : 0.25,
+    summary: summaryParts.length ? `Client needs ${summaryParts.join(" ")}.` : rawInput,
+  };
+}
+
 function normalizeRefinedRequirement(value: Record<string, unknown>, fallbackText: string): RefinedRequirement {
   const category = value.property_category === "commercial" || value.property_category === "land"
     ? value.property_category
@@ -97,25 +242,7 @@ function normalizeRefinedRequirement(value: Record<string, unknown>, fallbackTex
 }
 
 function fallbackRequirement(rawInput: string): RefinedRequirement {
-  return {
-    location: null,
-    budget: null,
-    budget_label: null,
-    currency: null,
-    property_type: null,
-    property_category: "residential",
-    bedrooms: null,
-    bathrooms: null,
-    purpose: "unknown",
-    sqft_min: null,
-    sqft_max: null,
-    must_haves: [],
-    deal_breakers: [],
-    assumptions: ["Could not fully structure the brief automatically."],
-    missing_fields: ["budget", "location", "property type"],
-    confidence: 0.25,
-    summary: rawInput,
-  };
+  return ruleBasedRequirement(rawInput);
 }
 
 async function parseWithOpenAI(rawInput: string, clientName: string | null): Promise<RefinedRequirement> {
@@ -169,6 +296,7 @@ async function parseWithOpenAI(rawInput: string, clientName: string | null): Pro
   });
 
   if (!response.ok) {
+    console.error(`OPENAI_REQUIREMENT_PARSE_FAILED:${response.status}:${(await response.text()).slice(0, 500)}`);
     return fallbackRequirement(rawInput);
   }
 
@@ -179,8 +307,13 @@ async function parseWithOpenAI(rawInput: string, clientName: string | null): Pro
       ?.join("\n") ||
     "";
 
-  const parsed = extractJsonObject(outputText) as Record<string, unknown>;
-  return normalizeRefinedRequirement(parsed, rawInput);
+  try {
+    const parsed = extractJsonObject(outputText) as Record<string, unknown>;
+    return normalizeRefinedRequirement(parsed, rawInput);
+  } catch (error) {
+    console.error(`OPENAI_REQUIREMENT_PARSE_JSON_FAILED:${error instanceof Error ? error.message : String(error)}`);
+    return fallbackRequirement(rawInput);
+  }
 }
 
 Deno.serve(async (req) => {
