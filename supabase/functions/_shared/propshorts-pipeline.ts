@@ -471,27 +471,35 @@ function isHtmlLike(bytes: Uint8Array) {
 }
 
 async function probeImageUrl(url: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5500);
-  try {
-    const response = await fetch(professionalImageUrl(url), {
-      signal: controller.signal,
-      headers: {
-        Accept: "image/avif,image/webp,image/jpeg,image/png,image/*,*/*;q=0.4",
-        Range: "bytes=0-4095",
-        "User-Agent": "Mozilla/5.0 PropShorts/1.0 (+https://propshorts.netlify.app)",
-      },
-    });
-    if (!response.ok) return null;
-    return {
-      contentType: response.headers.get("content-type")?.toLowerCase() || "",
-      bytes: new Uint8Array(await response.arrayBuffer()),
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
+  for (const useRangeRequest of [true, false]) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5500);
+    try {
+      const response = await fetch(professionalImageUrl(url), {
+        signal: controller.signal,
+        headers: {
+          Accept: "image/avif,image/webp,image/jpeg,image/png,image/*,*/*;q=0.4",
+          ...(useRangeRequest ? { Range: "bytes=0-4095" } : {}),
+          "User-Agent": "Mozilla/5.0 PropShorts/1.0 (+https://propshorts.netlify.app)",
+        },
+      });
+      const contentLength = Number(response.headers.get("content-length"));
+      if (!response.ok || (Number.isFinite(contentLength) && contentLength > 8_000_000)) {
+        response.body?.cancel();
+        continue;
+      }
+      return {
+        contentType: response.headers.get("content-type")?.toLowerCase() || "",
+        bytes: new Uint8Array(await response.arrayBuffer()),
+      };
+    } catch {
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  return null;
 }
 
 async function isVerifiedPropertyImageUrl(url: string) {
@@ -559,7 +567,7 @@ async function extractListingImagesFromSource(sourceUrl: string | null, title: s
       }
     }
 
-    const urlRegex = /https?:\\?\/\\?\/[^"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\\s<>]*)?/gi;
+    const urlRegex = /https?:\\?\/\\?\/[^"'\\\s<>]+?\.(?:avif|jpg|jpeg|png|webp)(?:\?[^"'\\\s<>]*)?/gi;
     for (const match of html.matchAll(urlRegex)) {
       const imageUrl = normalizeUrl(match[0].replace(/\\\//g, "/"), normalizedSource);
       if (imageUrl) candidates.push(imageUrl);
@@ -696,14 +704,13 @@ async function runSearchAttempt(openAiKey: string, requirement: RequirementRow, 
       : "Final retry: search the widest credible set of live property listing pages and return only properties with verified images.";
   const prompt = [
     "You are the PropShorts Search Agent. Return JSON only.",
-    `Find at least ${SEARCH_CANDIDATE_POOL_SIZE} credible live property listing candidates, then return the best image-backed matches for the broker requirement.`,
-    `Need ${targetCount} final recommendations, but return up to ${SEARCH_CANDIDATE_POOL_SIZE} candidates if they have actual listing photos so the app can filter.`,
+    `Find up to ${SEARCH_CANDIDATE_POOL_SIZE} credible live property listing candidates, then return the best matches for the broker requirement.`,
+    `Need ${targetCount} final recommendations, but return as many credible candidates as possible so PropShorts can independently verify photos and choose the final shortlist.`,
     breadthInstruction,
-    "Use live web results. Prefer credible active listing pages with useful photos. Relevance beats volume after image availability.",
-    "Every final property must have at least 1 real property image. Prefer 3 direct image URLs from the actual listing page: hero/exterior, main interior, and another useful angle.",
-    "Direct image URLs must open as image bytes in a browser or HTTP client. Do not invent .jpg paths from listing titles and do not put listing-page URLs inside images.",
-    "Never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
-    "If direct image URLs cannot be verified, include the public listing page in trace.source_url so PropShorts can extract images. Do not include image-less properties unless no image-backed listings exist.",
+    "Use live web results. Every candidate must have its public individual listing page URL in trace.source_url; discard search result pages, category pages, and projects without an individual listing URL.",
+    "Prefer credible active listing pages with useful photos. Relevance and a valid source URL are more important than supplying direct image URLs because PropShorts will extract and verify listing photos itself.",
+    "When you can see direct image URLs from that exact listing page, include up to 3 of them: hero/exterior, main interior, and another useful angle. Otherwise set images to [] and keep the source URL.",
+    "Do not invent .jpg paths from listing titles, do not put listing-page URLs inside images, and never use generic stock images, generated images, placeholder images, logos, maps, or unrelated property photos.",
     "Use null for facts you cannot verify. Do not invent source URLs, third-party agents, phone numbers, emails, prices, sqft, or bedrooms.",
     "Keep source URLs and third-party listing contact data only inside trace. Never copy third-party contact data into client-safe fields.",
     "Return clean client-facing copy. Do not mention brokers, internal search systems, AI, handoff, fallback, or technical workflow details in title/headline/description/highlights.",
