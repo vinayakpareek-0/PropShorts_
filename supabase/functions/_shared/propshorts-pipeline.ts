@@ -944,10 +944,10 @@ export async function persistSearchResults(supabase: SupabaseClient, run: RunRow
   const { error: runError } = await supabase
     .from("recommendation_runs")
     .update({
-      status: "completed",
+      status: "processing",
       search_summary_json: searchSummary,
       search_output_json: { properties },
-      completed_at: new Date().toISOString(),
+      completed_at: null,
     })
     .eq("id", run.id);
   if (runError) throw runError;
@@ -2561,6 +2561,17 @@ export async function finalizePackageRecord(
     .single();
 
   if (error || !data) throw error ?? new Error("PACKAGE_INSERT_FAILED");
+
+  const { error: completionError } = await supabase
+    .from("recommendation_runs")
+    .update({
+      status: "completed",
+      error_message: null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", run.id);
+  if (completionError) throw completionError;
+
   return data as { id: string; share_slug: string };
 }
 
@@ -2578,11 +2589,30 @@ export async function runFullPipeline(supabase: SupabaseClient, requirementId: s
 
   if (runError || !run) throw runError ?? new Error("RUN_INSERT_FAILED");
 
+  return processRecommendationRun(supabase, run as RunRow);
+}
+
+export async function processRecommendationRun(
+  supabase: SupabaseClient,
+  run: RunRow,
+  propertyTargetCount = DEFAULT_PROPERTY_TARGET_COUNT,
+  options: SearchOptions = {},
+) {
+  const requirement = await loadRequirement(supabase, run.requirement_id);
+
   try {
-    await persistSearchResults(supabase, run as RunRow, requirement);
-    const video = await generateVideoRecord(supabase, run as RunRow, requirement);
-    const pdf = await generatePdfRecord(supabase, run as RunRow, requirement);
-    const pkg = await finalizePackageRecord(supabase, run as RunRow, requirement, pdf.id, video.id);
+    await supabase
+      .from("recommendation_runs")
+      .update({ status: "processing", error_message: null, completed_at: null })
+      .eq("id", run.id);
+
+    await persistSearchResults(supabase, run, requirement, propertyTargetCount, options);
+    const [video, pdf] = await Promise.all([
+      generateVideoRecord(supabase, run, requirement, propertyTargetCount),
+      generatePdfRecord(supabase, run, requirement, propertyTargetCount),
+    ]);
+    const pkg = await finalizePackageRecord(supabase, run, requirement, pdf.id, video.id);
+
     return { run_id: run.id, package_id: pkg.id, share_slug: pkg.share_slug, video_id: video.id, pdf_id: pdf.id };
   } catch (error) {
     const message = getErrorMessage(error);
