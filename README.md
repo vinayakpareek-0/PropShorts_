@@ -10,7 +10,7 @@ The MVP is broker-first. Client-facing access can be added later, but the curren
 
 - Captures client requirements from text, URL, or voice input.
 - Uses Supabase Auth for secure broker access.
-- Refines requirements and searches for public property matches through server-side functions.
+- Refines requirements and searches public property matches through a resilient, source-backed server-side pipeline.
 - Stores recommendations, internal traces, generated PDFs, videos, and package records in Supabase.
 - Generates a designed PDF report with property details, comparison table, broker profile, and next-step call-to-action.
 - Creates a vertical PropShort video using Shotstack, property images, and optional Cartesia voiceover.
@@ -32,11 +32,38 @@ The MVP is broker-first. Client-facing access can be added later, but the curren
 1. Broker signs in.
 2. Broker enters a client requirement from text, voice, or URL.
 3. Supabase Edge Functions parse, transcribe, and refine the requirement.
-4. The search workflow creates property recommendations and broker-only trace data.
-5. The PDF function generates a shareable report and uploads it to Supabase Storage.
-6. The video function creates a `generated_videos` row, builds the Shotstack edit, and queues the Shotstack render.
-7. Shotstack renders the vertical MP4, and the function stores the output status and URL in Supabase.
-8. The package is finalized and shown in the dashboard, package screen, PDF screen, PropShort screen, and public share route.
+4. An asynchronous recommendation run discovers public listings with Tavily and OpenAI web search in parallel.
+5. The pipeline deduplicates candidates, applies source-backed geographic checks, verifies source-linked images, and ranks viable listings.
+6. The PDF function generates a shareable report and uploads it to Supabase Storage.
+7. The video function creates a `generated_videos` row, builds the Shotstack edit, and queues the Shotstack render.
+8. Shotstack renders the vertical MP4, and the function stores the output status and URL in Supabase.
+9. The package is finalized and shown in the dashboard, package screen, PDF screen, PropShort screen, and public share route.
+
+## Property Discovery Pipeline
+
+```mermaid
+flowchart LR
+  A[Refined broker brief] --> B[Async recommendation run]
+  B --> C[Tavily discovery]
+  B --> D[OpenAI web discovery]
+  C --> E[Merge and deduplicate source URLs]
+  D --> E
+  E --> F{Hard brief checks}
+  F -->|Wrong city or no listing URL| G[Reject with internal reason]
+  F -->|Eligible| H[Source image verification]
+  H --> I{Two or more candidates?}
+  I -->|Yes| J[OpenAI evidence-based rerank]
+  I -->|No| K[Keep deterministic order]
+  J --> L[Verified shortlist]
+  K --> L
+  L --> M[PDF, video, and package]
+```
+
+- Tavily and OpenAI run independently, so a provider failure does not stop the other provider.
+- The city and locality rules are deterministic: a candidate is rejected when its source evidence conflicts with the brief.
+- Only public, individual listing URLs and source-linked property images may reach the shortlist.
+- Search uses bounded candidate pools, a single Tavily search/extract batch, one OpenAI discovery request, and at most one rerank request.
+- If only one or two listings pass verification, the package continues with the verified shortlist; if none pass, the run fails safely and the broker can edit the same saved brief.
 
 ## Important Routes
 
@@ -59,6 +86,7 @@ The main function folders live in `supabase/functions`:
 - `transcribe-requirement-audio`
 - `start-recommendation-run`
 - `run-property-search`
+- `process-recommendation-run`
 - `generate-pdf-report`
 - `generate-property-video`
 - `rerender-property-video`
@@ -155,6 +183,7 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
+TAVILY_API_KEY=
 SHOTSTACK_API_KEY=
 SHOTSTACK_API_URL=
 CARTESIA_API_KEY=
@@ -194,6 +223,7 @@ Supabase function deployment is handled with the Supabase CLI or Supabase Manage
 ## Current Notes
 
 - The app currently creates one combined PropShort package video per run.
+- Property discovery uses parallel Tavily and OpenAI web research, with source-backed geography and image qualification before reranking.
 - The Shotstack video path can render without narration if Cartesia is unavailable.
 - Shotstack sandbox renders may include a watermark.
 - Existing generated PDFs/videos do not automatically change after template updates; regenerate or rerender assets to see new templates.
