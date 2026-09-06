@@ -129,6 +129,16 @@ export function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function resolvePropertyTargetCount(value: unknown) {
   const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : DEFAULT_PROPERTY_TARGET_COUNT;
   return count === 3 ? 3 : PROPERTY_MAX_COUNT;
@@ -756,11 +766,11 @@ async function discoverWithTavily(tavilyKey: string | undefined, requirement: Re
   const queryBase = [inferred.rentOrBuy, inferred.bedrooms ? `${inferred.bedrooms} BHK` : null, inferred.propertyType, inferred.location, "listing"].filter(Boolean).join(" ");
   const queries = [queryBase, `${inferred.location} ${inferred.propertyType} property listing photos`].slice(0, TAVILY_QUERY_LIMIT);
   try {
-    const response = await fetch("https://api.tavily.com/search", {
+    const response = await fetchWithTimeout("https://api.tavily.com/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${tavilyKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query: queries.join(" OR "), search_depth: "basic", max_results: SEARCH_CANDIDATE_POOL_SIZE, include_images: true, include_image_descriptions: true }),
-    });
+    }, 12_000);
     if (!response.ok) return { provider: "tavily", properties: [], warning: `Tavily search was unavailable (${response.status}); continuing with web search.`, usage: { configured: true, status: response.status } };
     const payload = await response.json();
     const results = Array.isArray(payload.results) ? payload.results as Array<Record<string, unknown>> : [];
@@ -802,7 +812,7 @@ async function runOpenAiDiscovery(openAiKey: string, requirement: RequirementRow
     `Original requirement: ${JSON.stringify(requirement.refined_requirements_json ?? requirement.raw_input ?? requirement.source_url)}`,
   ].join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -812,7 +822,7 @@ async function runOpenAiDiscovery(openAiKey: string, requirement: RequirementRow
       tools: [{ type: "web_search", search_context_size: "medium" }],
       tool_choice: "auto",
     }),
-  });
+  }, 35_000);
 
   if (!response.ok) {
     const details = await response.text();
@@ -834,11 +844,11 @@ async function extractTavilyImages(tavilyKey: string | undefined, properties: Pr
   const urls = properties.map((property) => canonicalSourceUrl(property.trace.source_url)).filter((url): url is string => Boolean(url)).slice(0, TAVILY_EXTRACT_LIMIT);
   if (!urls.length) return properties;
   try {
-    const response = await fetch("https://api.tavily.com/extract", {
+    const response = await fetchWithTimeout("https://api.tavily.com/extract", {
       method: "POST",
       headers: { Authorization: `Bearer ${tavilyKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ urls, extract_depth: "basic", include_images: true }),
-    });
+    }, 15_000);
     if (!response.ok) return properties;
     const payload = await response.json();
     const byUrl = new Map((Array.isArray(payload.results) ? payload.results : []).map((item: Record<string, unknown>) => [canonicalSourceUrl(asString(item.url)), item]));
@@ -858,11 +868,11 @@ async function rerankWithOpenAi(openAiKey: string, properties: PropertyCandidate
     source_url: property.trace.source_url, title: property.title, area: property.area, city: property.city, price: property.price_label, bedrooms: property.bedrooms, sqft: property.sqft, description: property.description.slice(0, 500),
   }));
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "gpt-4.1-mini", temperature: 0, input: `Return JSON only: {"ordered_source_urls":["..."]}. Rank these already location-validated public listing candidates against the brief. Do not add URLs or candidates. Brief: ${JSON.stringify(inferred)} Candidates: ${JSON.stringify(candidates)}` }),
-    });
+    }, 20_000);
     if (!response.ok) return properties;
     const parsed = parseJsonObject(collectResponseText(await response.json()));
     const ordered = Array.isArray(parsed?.ordered_source_urls) ? parsed.ordered_source_urls.filter((url): url is string => typeof url === "string") : [];
@@ -898,15 +908,7 @@ export async function searchProperties(requirement: RequirementRow, propertyTarg
   const tavilyKey = Deno.env.get("TAVILY_API_KEY");
 
   if (!openAiKey && !tavilyKey) {
-    return {
-      searchSummary: {
-        interpreted_brief: inferred.note,
-        assumptions: ["Live web search is not configured; generated a requirement-based draft."],
-        property_category: inferred.category,
-        warnings: [CLIENT_SAFE_FALLBACK_WARNING],
-      },
-      properties: buildFallbackProperties(requirement, targetCount),
-    };
+    throw new Error("PROPERTY_SEARCH_PROVIDER_FAILED: Live property search is not configured.");
   }
 
   const warnings: string[] = [];
@@ -2708,10 +2710,11 @@ export async function processRecommendationRun(
   const requirement = await loadRequirement(supabase, run.requirement_id);
 
   try {
-    await supabase
+    const { error: processingError } = await supabase
       .from("recommendation_runs")
       .update({ status: "processing", error_message: null, completed_at: null })
       .eq("id", run.id);
+    if (processingError) throw processingError;
 
     await persistSearchResults(supabase, run, requirement, propertyTargetCount, options);
     const [video, pdf] = await Promise.all([
@@ -2723,10 +2726,15 @@ export async function processRecommendationRun(
     return { run_id: run.id, package_id: pkg.id, share_slug: pkg.share_slug, video_id: video.id, pdf_id: pdf.id };
   } catch (error) {
     const message = getErrorMessage(error);
-    await supabase
-      .from("recommendation_runs")
-      .update({ status: "failed", error_message: message })
-      .eq("id", run.id);
+    try {
+      const { error: failureUpdateError } = await supabase
+        .from("recommendation_runs")
+        .update({ status: "failed", error_message: message })
+        .eq("id", run.id);
+      if (failureUpdateError) console.error(`RECOMMENDATION_RUN_FAILURE_STATUS_UPDATE_FAILED:${run.id}:${failureUpdateError.message}`);
+    } catch (failureUpdateError) {
+      console.error(`RECOMMENDATION_RUN_FAILURE_STATUS_UPDATE_THROWN:${run.id}:${getErrorMessage(failureUpdateError)}`);
+    }
     throw error;
   }
 }
