@@ -1,158 +1,100 @@
 # PropShorts
 
-PropShorts is an AI-powered real estate broker assistant. It helps a broker turn a client requirement into a polished property recommendation package with matched listings, a shareable PDF report, and a short narrated vertical video.
+An AI-assisted workspace for real estate brokers. PropShorts turns a client's property brief into a shortlist of public listings, a shareable PDF report, and a narrated vertical video.
 
-The MVP is broker-first. Client-facing access can be added later, but the current product focuses on broker authentication, package creation, generated assets, and sharing.
+## Features
 
-![PropShorts architecture](docs/architecture.svg)
+- **Flexible input:** Capture a client brief through text, a property URL, or an uploaded voice recording.
+- **Editable requirements:** Review and refine the interpreted budget, location, property type, and preferences before searching.
+- **Source-backed discovery:** Search with Tavily and OpenAI, deduplicate listings, check geographic evidence, qualify property images, and rank candidates.
+- **Generated packages:** Create a property comparison PDF and a combined short video with optional narration.
+- **Broker workspace:** Manage recommendations, reports, videos, profile details, and subscriptions.
+- **Sharing:** Publish a package through a dedicated share page.
 
-## What It Does
-
-- Captures client requirements from text, URL, or voice input.
-- Uses Supabase Auth for secure broker access.
-- Refines requirements and searches public property matches through a resilient, source-backed server-side pipeline.
-- Stores recommendations, internal traces, generated PDFs, videos, and package records in Supabase.
-- Generates a designed PDF report with property details, comparison table, broker profile, and next-step call-to-action.
-- Creates a vertical PropShort video using Shotstack, property images, and optional Cartesia voiceover.
-- Exposes broker dashboard, PDF list, PropShort list, package detail, and public share routes.
-
-## Stack
-
-- **Frontend:** Next.js App Router, React, TypeScript, TailwindCSS
-- **Auth / Database / Storage:** Supabase Auth, PostgreSQL, RLS, Storage
-- **Backend workflow:** Supabase Edge Functions
-- **PDF generation:** React-style layout logic built with `pdf-lib`
-- **Video rendering:** Shotstack render API, orchestrated from Supabase Edge Functions
-- **Voiceover:** Cartesia TTS, orchestrated from Supabase Edge Functions
-- **Payments:** Stripe checkout and webhook functions
-- **Frontend deployment:** Netlify
-
-## Product Flow
-
-1. Broker signs in.
-2. Broker enters a client requirement from text, voice, or URL.
-3. Supabase Edge Functions parse, transcribe, and refine the requirement.
-4. An asynchronous recommendation run discovers public listings with Tavily and OpenAI web search in parallel.
-5. The pipeline deduplicates candidates, applies source-backed geographic checks, verifies source-linked images, and ranks viable listings.
-6. The PDF function generates a shareable report and uploads it to Supabase Storage.
-7. The video function creates a `generated_videos` row, builds the Shotstack edit, and queues the Shotstack render.
-8. Shotstack renders the vertical MP4, and the function stores the output status and URL in Supabase.
-9. The package is finalized and shown in the dashboard, package screen, PDF screen, PropShort screen, and public share route.
-
-## Property Discovery Pipeline
+## Architecture
 
 ```mermaid
 flowchart LR
-  A[Refined broker brief] --> B[Async recommendation run]
-  B --> C[Tavily discovery]
-  B --> D[OpenAI web discovery]
-  C --> E[Merge and deduplicate source URLs]
-  D --> E
-  E --> F{Hard brief checks}
-  F -->|Wrong city or no listing URL| G[Reject with internal reason]
-  F -->|Eligible| H[Source image verification]
-  H --> I{Two or more candidates?}
-  I -->|Yes| J[OpenAI evidence-based rerank]
-  I -->|No| K[Keep deterministic order]
-  J --> L[Verified shortlist]
-  K --> L
-  L --> M[PDF, video, and package]
+    Broker[Broker] --> Web[Next.js application]
+    Web --> Auth[Supabase Auth]
+    Web --> Functions[Supabase Edge Functions]
+    Functions --> Search[Tavily and OpenAI]
+    Functions --> Data[(PostgreSQL and Storage)]
+    Functions --> PDF[PDF generation]
+    Functions --> Video[Shotstack and Cartesia]
+    PDF --> Data
+    Video --> Data
+    Data --> Package[Dashboard and share page]
 ```
 
-- Tavily and OpenAI run independently, so a provider failure does not stop the other provider.
-- The city and locality rules are deterministic: a candidate is rejected when its source evidence conflicts with the brief.
-- Only public, individual listing URLs and source-linked property images may reach the shortlist.
-- Search uses bounded candidate pools, a single Tavily search/extract batch, one OpenAI discovery request, and at most one rerank request.
-- If only one or two listings pass verification, the package continues with the verified shortlist; if none pass, the run fails safely and the broker can edit the same saved brief.
+The frontend handles input, review, and presentation. Supabase Edge Functions orchestrate transcription, requirement parsing, property discovery, and asset generation. PostgreSQL stores workflow records; Supabase Storage holds uploaded audio and generated assets.
 
-## Important Routes
+Search providers run independently so one provider's failure does not stop the other. Candidate selection checks location evidence and source-linked images before ranking. The pipeline targets three recommendations and can continue with a smaller verified shortlist. A run with no qualifying properties returns a failure state so the broker can revise the brief.
 
-- `/login`, `/signup`, `/forgot-password`, `/reset-password`
-- `/dashboard`
-- `/new-propshort`
-- `/create/select`, `/create/write`, `/create/talk`, `/create/confirm`, `/create/processing/[runId]`
-- `/packages/[packageId]`
-- `/pdfs`, `/pdfs/[pdfId]`
-- `/propshorts`, `/propshorts/[propshortId]`
-- `/share/[shareSlug]`
-- `/account`, `/tips`, `/plan`
+## Technology
 
-## Supabase Functions
+| Area | Implementation |
+| --- | --- |
+| Web application | Next.js App Router, React, TypeScript, Tailwind CSS |
+| Authentication and data | Supabase Auth, PostgreSQL, Row Level Security |
+| Storage and orchestration | Supabase Storage and Edge Functions |
+| Property discovery | Tavily and OpenAI |
+| Reports | `pdf-lib` in the server-side workflow |
+| Video and narration | Shotstack and Cartesia; optional Remotion worker fallback |
+| Billing | Stripe Checkout and webhooks |
+| Web deployment | Netlify |
 
-The main function folders live in `supabase/functions`:
-
-- `submit-client-requirement`
-- `parse-client-requirement`
-- `transcribe-requirement-audio`
-- `start-recommendation-run`
-- `run-property-search`
-- `process-recommendation-run`
-- `generate-pdf-report`
-- `generate-property-video`
-- `rerender-property-video`
-- `finalize-package`
-- `create-checkout-session`
-- `stripe-webhook`
-
-Shared workflow and PDF/video orchestration helpers live in:
+## Project Structure
 
 ```text
-supabase/functions/_shared/propshorts-pipeline.ts
+src/
+  app/                 Application routes and screens
+  components/          Shared UI components
+  lib/                 Typed data access and client-safe transformations
+  remotion/            Video compositions for the optional render worker
+  render-worker/       Optional rendering service
+  types/               Shared application types
+supabase/
+  functions/           Server-side workflows and provider integrations
+  migrations/          Database schema and access policies
+public/                Application assets
+scripts/               Development and build utilities
 ```
-
-## Data Model
-
-Core tables include:
-
-- `profiles`
-- `client_requirements`
-- `recommendation_runs`
-- `property_recommendations`
-- `property_internal_traces`
-- `generated_pdfs`
-- `generated_videos`
-- `recommendation_packages`
-
-Generated files are stored in Supabase Storage buckets such as:
-
-- `requirement-audio`
-- `generated-pdfs`
-- `generated-videos`
-- `property-images`
-
-## Video Rendering
-
-Supabase Edge Functions create the video record, generate the narration script, request Cartesia audio when enabled, build the Shotstack edit JSON, and queue the Shotstack render.
-
-The active video format is documented in:
-
-```text
-docs/propshort-video-format.md
-```
-
-The Shotstack path:
-
-- Uses real property images from the recommendation result.
-- Keeps the broker block, metric badge, property text, PDF page, and call page aligned to the PropShorts format.
-- Adds optional Cartesia narration to the render.
-- Stores video status, provider job ID, narration transcript, and final video URL in Supabase.
-- Falls back to the legacy webhook path only if Shotstack secrets are not configured.
 
 ## Local Development
 
-Install dependencies:
+Use Node.js 20 or later and npm.
 
 ```bash
-npm install
+npm ci
+cp .env.example .env.local
 ```
 
-Run the app:
+On PowerShell, use `Copy-Item .env.example .env.local` for the second command. Fill in the public URL and anonymous key for your own Supabase project, then start the web application:
 
 ```bash
 npm run dev
 ```
 
-Run checks:
+Open [localhost:3000](http://localhost:3000). Authentication and package generation require a configured Supabase backend; provider integrations also require their server-side credentials.
+
+### Backend Configuration
+
+Apply the migrations in `supabase/migrations` and deploy the functions in `supabase/functions` to your own Supabase project. Configure the corresponding Storage buckets and Auth redirect URLs for your environment.
+
+Store provider credentials in Supabase secrets. The main integrations use:
+
+| Integration | Server-side variables |
+| --- | --- |
+| Requirement parsing and discovery | `OPENAI_API_KEY`, `TAVILY_API_KEY` |
+| Video rendering | `SHOTSTACK_API_KEY`; optional `SHOTSTACK_API_URL` |
+| Narration | `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` |
+| Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_STARTER_PRICE_ID`, `STRIPE_PRO_PRICE_ID`, `APP_BASE_URL` |
+| Optional render worker | `REMOTION_RENDER_WEBHOOK_URL`, `REMOTION_RENDER_SECRET` |
+
+The Edge Functions also use the Supabase-provided `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. Only the two public variables in `.env.example` belong in the frontend environment.
+
+### Checks
 
 ```bash
 npm run lint
@@ -160,70 +102,17 @@ npm run typecheck
 npm run build
 ```
 
-On this Windows setup, the global `npm`/`npx` shim may be broken. Use the NVM-managed executable when needed:
-
-```powershell
-C:\nvm4w\nodejs\npm.cmd run lint
-C:\nvm4w\nodejs\npm.cmd run typecheck
-```
-
-## Environment Variables
-
-Frontend:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-```
-
-Supabase Edge Functions:
-
-```text
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-OPENAI_API_KEY=
-TAVILY_API_KEY=
-SHOTSTACK_API_KEY=
-SHOTSTACK_API_URL=
-CARTESIA_API_KEY=
-CARTESIA_VOICE_ID=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-```
-
-Legacy fallback, only if the old render webhook path is used:
-
-```text
-REMOTION_RENDER_WEBHOOK_URL=
-REMOTION_RENDER_SECRET=
-```
-
-Do not expose provider secrets in frontend code. Store provider secrets in Supabase secrets and frontend-only public variables in Netlify environment variables.
+`npm run check` runs linting, type checking, and a clean production build. Stop the development server before a production build because both use the `.next` directory.
 
 ## Deployment
 
-Frontend deployment is configured for Netlify:
+`netlify.toml` configures the web build with Node.js 20 and `npm run check`. Set the public Supabase environment variables in Netlify, and deploy database migrations and Edge Functions separately to Supabase.
 
-```text
-netlify.toml
-```
+Broker records use ownership-based access policies. Public package sharing is a separate read path, and internal discovery traces are excluded from client-facing output.
 
-Supabase function deployment is handled with the Supabase CLI or Supabase Management API.
+## Current Scope
 
-## Development Rules
-
-- Keep AI/API provider calls server-side only.
-- Keep broker data private with Supabase RLS.
-- Store generated assets in Supabase Storage.
-- Keep PDF/video output client-safe; broker-only trace data must never appear in public output.
-- Add loading, empty, success, and error states for user-facing screens.
-- Keep the UI consistent with the PropShorts visual system: white surfaces, restrained grey panels, Poppins-style typography, clean spacing, and minimal ornament.
-
-## Current Notes
-
-- The app currently creates one combined PropShort package video per run.
-- Property discovery uses parallel Tavily and OpenAI web research, with source-backed geography and image qualification before reranking.
-- The Shotstack video path can render without narration if Cartesia is unavailable.
-- Shotstack sandbox renders may include a watermark.
-- Existing generated PDFs/videos do not automatically change after template updates; regenerate or rerender assets to see new templates.
+- The application focuses on the broker workflow.
+- Recommendations use public web discovery; availability and listing details still need broker verification.
+- Each run produces one combined package video. Narration is optional, and Shotstack sandbox output may include a watermark.
+- Template changes apply to newly generated or rerendered assets.

@@ -19,6 +19,14 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+credentials.json
+service-account*.json
+.aws/
+.ssh/
 
 # debug
 npm-debug.log*
@@ -33,6 +41,8 @@ tmp-*.json
 # local env files
 .env*.local
 .env
+.env.*
+!.env.example
 supabase/.deploy.env
 supabase/.temp/
 
@@ -48,3 +58,19 @@ next-env.d.ts
 
 # Local assistant/workspace metadata
 .claude/
+.codex/
+.agents/
+.mcp.json
+AGENTS.md
+CLAUDE.md
+
+# Internal planning and design reference material
+/docs/
+/claude-prompts/
+/design-inputs/
+/scripts/shotstack-prototype.mjs
+
+# Source artwork; application assets belong in public/
+/icon.png
+/logo.png
+/top_logo.png
